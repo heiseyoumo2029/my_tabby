@@ -5,7 +5,7 @@ import * as os from 'os'
 import promiseIpc, { RendererProcessType } from 'electron-promise-ipc'
 import { execFile } from 'mz/child_process'
 import { Injectable, NgZone } from '@angular/core'
-import { PlatformService, ClipboardContent, Platform, MenuItemOptions, MessageBoxOptions, MessageBoxResult, DirectoryUpload, FileUpload, FileDownload, DirectoryDownload, FileUploadOptions, wrapPromise, TranslateService, FileTransfer, PlatformTheme } from 'tabby-core'
+import { PlatformService, ClipboardContent, ClipboardImage, Platform, MenuItemOptions, MessageBoxOptions, MessageBoxResult, DirectoryUpload, FileUpload, FileDownload, DirectoryDownload, FileUploadOptions, wrapPromise, TranslateService, FileTransfer, PlatformTheme } from 'tabby-core'
 import { ElectronService } from '../services/electron.service'
 import { ElectronHostWindow } from './hostWindow.service'
 import { ShellIntegrationService } from './shellIntegration.service'
@@ -78,6 +78,17 @@ export class ElectronPlatformService extends PlatformService {
 
     readClipboard (): string {
         return this.electron.clipboard.readText()
+    }
+
+    readClipboardImage (): ClipboardImage|null {
+        const image = this.electron.clipboard.readImage()
+        if (image.isEmpty()) {
+            return null
+        }
+        return {
+            data: image.toPNG(),
+            extension: 'png',
+        }
     }
 
     setClipboard (content: ClipboardContent): void {
