@@ -7,6 +7,11 @@ export interface ClipboardContent {
     html?: string
 }
 
+export interface ClipboardImage {
+    data: Uint8Array
+    extension: string
+}
+
 export interface MessageBoxOptions {
     type: 'warning'|'error'
     message: string
@@ -151,6 +156,13 @@ export abstract class PlatformService {
     protected themeChanged = new Subject<PlatformTheme>()
 
     abstract readClipboard (): string
+    /**
+     * Returns an image from the system clipboard, encoded in a portable format.
+     * Platforms without image clipboard support return null.
+     */
+    readClipboardImage (): ClipboardImage|null {
+        return null
+    }
     abstract setClipboard (content: ClipboardContent): void
     abstract loadConfig (): Promise<string>
     abstract saveConfig (content: string): Promise<void>
