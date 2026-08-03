@@ -149,6 +149,29 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         return session
     }
 
+    /**
+     * Makes clipboard screenshots available to terminal-based AI clients. The
+     * clients already understand image file paths, so the image is copied to the
+     * SSH host with SFTP and its remote path is pasted into the active prompt.
+     */
+    async paste (): Promise<void> {
+        const image = this.platform.readClipboardImage()
+        if (!image || !this.sshSession) {
+            return super.paste()
+        }
+
+        const remotePath = `/tmp/tabby-clipboard-${Date.now()}-${Math.random().toString(16).slice(2)}.${image.extension}`
+        try {
+            const sftp = await this.sshSession.openSFTP()
+            await sftp.uploadBuffer(remotePath, image.data)
+            this.sendInput(remotePath)
+            this.notifications.notice(this.translate.instant(_('Clipboard image uploaded')))
+        } catch (error) {
+            this.logger.error('Could not upload clipboard image', error)
+            this.notifications.error(this.translate.instant(_('Could not upload clipboard image')))
+        }
+    }
+
     protected onSessionDestroyed (): void {
         if (this.frontend) {
             // Session was closed abruptly

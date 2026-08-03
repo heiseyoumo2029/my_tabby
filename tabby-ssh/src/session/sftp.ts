@@ -133,6 +133,24 @@ export class SFTPSession {
         }
     }
 
+    async uploadBuffer (path: string, data: Uint8Array): Promise<void> {
+        this.logger.info('Uploading clipboard data into', path)
+        const tempPath = path + '.tabby-upload'
+        let handle: SFTPFileHandle|null = null
+        try {
+            handle = await this.open(tempPath, russh.OPEN_WRITE | russh.OPEN_CREATE)
+            await handle.write(data)
+            await handle.close()
+            handle = null
+            await this.unlink(path).catch(() => null)
+            await this.rename(tempPath, path)
+        } catch (e) {
+            await handle?.close().catch(() => null)
+            this.unlink(tempPath).catch(() => null)
+            throw e
+        }
+    }
+
     async download (path: string, transfer: FileDownload): Promise<void> {
         this.logger.info('Downloading', path)
         try {
