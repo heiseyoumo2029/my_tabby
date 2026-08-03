@@ -91,7 +91,8 @@ jobs:
           rustup target add "${{ matrix.rust_target }}"
           npm install --global yarn node-gyp@10.2.0
           $prefix = npm prefix -g
-          npm config set node_gyp "$prefix\node_modules\node-gyp\bin\node-gyp.js"
+          $nodeGyp = Join-Path $prefix "node_modules\node-gyp\bin\node-gyp.js"
+          "npm_config_node_gyp=$nodeGyp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Download Visual C++ Redistributable
         shell: bash
