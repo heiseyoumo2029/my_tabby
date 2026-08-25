@@ -161,6 +161,7 @@ export class BaseTerminalTabComponent<P extends BaseTerminalProfile> extends Bas
     }, 1000)
 
     private frontendWriteLock = Promise.resolve()
+    private pasteHotkeyActive = false
 
     get input$ (): Observable<Buffer> {
         if (!this.frontend) {
@@ -251,7 +252,12 @@ export class BaseTerminalTabComponent<P extends BaseTerminalProfile> extends Bas
                     this.notifications.notice(this.translate.instant('Copied'))
                     break
                 case 'paste':
-                    this.forEachFocusedTerminalPane(tab => tab.paste())
+                    // A held shortcut produces repeated keydown events, but one
+                    // physical press should initiate only one paste operation.
+                    if (!this.pasteHotkeyActive) {
+                        this.pasteHotkeyActive = true
+                        this.forEachFocusedTerminalPane(tab => tab.paste())
+                    }
                     break
                 case 'select-all':
                     this.frontend?.selectAll()
@@ -326,6 +332,12 @@ export class BaseTerminalTabComponent<P extends BaseTerminalProfile> extends Bas
                 case 'scroll-to-bottom':
                     this.frontend?.scrollToBottom()
                     break
+            }
+        })
+
+        this.subscribeUntilDestroyed(this.hotkeys.hotkeyOff$, hotkey => {
+            if (hotkey === 'paste') {
+                this.pasteHotkeyActive = false
             }
         })
 
