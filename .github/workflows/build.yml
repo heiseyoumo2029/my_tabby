@@ -55,7 +55,7 @@ jobs:
           PidFile $RUNNER_TEMP/test-ssh/sshd.pid
           AuthorizedKeysFile $RUNNER_TEMP/test-ssh/authorized_keys
           StrictModes no
-          UsePAM no
+          UsePAM yes
           PasswordAuthentication no
           PubkeyAuthentication yes
           SetEnv TMUX_TMPDIR=$RUNNER_TEMP/tmux-env PATH=$RUNNER_TEMP/tmux-install/bin:/usr/bin:/bin
@@ -63,7 +63,7 @@ jobs:
           sudo mkdir -p /run/sshd
           sudo /usr/sbin/sshd -D -e -f "$RUNNER_TEMP/test-ssh/sshd_config" > "$RUNNER_TEMP/test-ssh/log" 2>&1 &
           sshd_pid=$!
-          trap 'sudo kill "$sshd_pid" 2>/dev/null || true' EXIT
+          trap 'status=$?; if [ "$status" -ne 0 ]; then cat "$RUNNER_TEMP/test-ssh/log"; fi; sudo kill "$sshd_pid" 2>/dev/null || true' EXIT
           sleep 2
           if ! kill -0 "$sshd_pid" 2>/dev/null; then cat "$RUNNER_TEMP/test-ssh/log"; exit 1; fi
           node tabby-ssh/test/tmuxVersion.integration.cjs
