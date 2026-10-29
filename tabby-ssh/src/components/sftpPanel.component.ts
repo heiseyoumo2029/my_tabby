@@ -32,6 +32,8 @@ export class SFTPPanelComponent {
     @Input() cwdDetectionAvailable = false
     @Input() tmuxSocketPath = ''
     @Output() tmuxSocketPathChange = new EventEmitter<string>()
+    @Input() tmuxExecutablePath = ''
+    @Output() tmuxExecutablePathChange = new EventEmitter<string>()
     editingPath: string|null = null
     showFilter = false
     filterText = ''
@@ -114,21 +116,31 @@ export class SFTPPanelComponent {
         this.tmuxSocketPathChange.emit(value)
     }
 
+    onTmuxExecutablePathChange (value: string): void {
+        this.tmuxExecutablePath = value
+        this.tmuxPanes = []
+        this.tmuxExecutablePathChange.emit(value)
+    }
+
     async loadTmuxPanes (): Promise<void> {
         const socketPath = this.tmuxSocketPath
+        const executable = this.tmuxExecutablePath
         try {
-            const result = await this.session.queryTmux(undefined, socketPath)
-            if (socketPath !== this.tmuxSocketPath) {
+            const result = await this.session.queryTmux(undefined, socketPath, executable)
+            if (socketPath !== this.tmuxSocketPath || executable !== this.tmuxExecutablePath) {
                 return
             }
-            this.tmuxPanes = result.split('\n').map(line => /^(%[0-9]+) (.*)$/.exec(line))
+            this.tmuxPanes = result.split('\n').map(line => /^\s*(%[0-9]+)(?:\s+(.*?))?\s*$/.exec(line))
                 .filter((match): match is RegExpExecArray => !!match)
-                .map(match => ({ id: match[1], label: `${match[2]} (${match[1]})` }))
+                .map(match => ({ id: match[1], label: match[2] ? `${match[2]} (${match[1]})` : match[1] }))
             if (!this.tmuxPanes.length) {
-                this.notifications.error(this.translate.instant('No tmux panes found'))
+                const detail = result.trim().slice(0, 300)
+                this.notifications.error(detail
+                    ? `${this.translate.instant('Unexpected tmux output')}: ${detail}`
+                    : this.translate.instant('tmux returned no output; check the executable and socket paths'))
             }
         } catch (error) {
-            if (socketPath !== this.tmuxSocketPath) {
+            if (socketPath !== this.tmuxSocketPath || executable !== this.tmuxExecutablePath) {
                 return
             }
             this.tmuxPanes = []
@@ -138,9 +150,10 @@ export class SFTPPanelComponent {
 
     async navigateToTmuxPane (id: string): Promise<void> {
         const socketPath = this.tmuxSocketPath
+        const executable = this.tmuxExecutablePath
         try {
-            const cwd = (await this.session.queryTmux(id, socketPath)).replace(/\n$/, '')
-            if (socketPath !== this.tmuxSocketPath) {
+            const cwd = (await this.session.queryTmux(id, socketPath, executable)).replace(/\n$/, '')
+            if (socketPath !== this.tmuxSocketPath || executable !== this.tmuxExecutablePath) {
                 return
             }
             if (!cwd.startsWith('/')) {

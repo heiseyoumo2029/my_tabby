@@ -57,6 +57,9 @@ async function main () {
     assert.equal(shellQuote.parse(ssh.channel.command)[2], '/tmp/my socket')
     await query.queryTmux(undefined, '/tmp/socket; touch /tmp/ignored')
     assert.equal(shellQuote.parse(ssh.channel.command)[2], '/tmp/socket; touch /tmp/ignored')
+    await query.queryTmux(undefined, '', '/opt/tmux 3.4/bin/tmux')
+    assert.equal(shellQuote.parse(ssh.channel.command)[0], '/opt/tmux 3.4/bin/tmux')
+    await assert.rejects(query.queryTmux(undefined, '', 'relative/tmux'), /absolute path/)
     ssh.error = 'error connecting to /tmp/tmux: permission denied'
     await assert.rejects(query.queryTmux(), /permission denied/)
     ssh.error = ''

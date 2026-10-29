@@ -372,7 +372,7 @@ export class SSHSession {
     }
 
     /** Run a non-interactive tmux query without writing to the user's shell. */
-    async queryTmux (pane?: string, socketPath = ''): Promise<string> {
+    async queryTmux (pane?: string, socketPath = '', executable = ''): Promise<string> {
         if (!(this.ssh instanceof russh.AuthenticatedSSHClient)) {
             throw new Error('Cannot query tmux before auth')
         }
@@ -381,6 +381,9 @@ export class SSHSession {
         }
         if (socketPath && (!socketPath.startsWith('/') || socketPath.includes('\0'))) {
             throw new Error('tmux socket path must be an absolute path')
+        }
+        if (executable && (!executable.startsWith('/') || executable.includes('\0'))) {
+            throw new Error('tmux executable path must be an absolute path')
         }
         const channel = await this.ssh.activateChannel(await this.ssh.openSessionChannel())
         const chunks: Buffer[] = []
@@ -410,7 +413,7 @@ export class SSHSession {
                 subscriptions.push(channel.eof$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
                 subscriptions.push(channel.closed$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
             })
-            const command = ['tmux', ...(socketPath ? ['-S', socketPath] : [])]
+            const command = [executable || 'tmux', ...(socketPath ? ['-S', socketPath] : [])]
             command.push(...(pane
                 ? ['display-message', '-p', '-t', pane, '#{pane_current_path}']
                 : ['list-panes', '-a', '-F', '#{pane_id} #{session_name}:#{window_index}.#{pane_index}']))

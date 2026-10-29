@@ -51,6 +51,7 @@ sftp-panel.bg-dark(
     [@.disabled]='!config.store.accessibility.animations',
     [(path)]='sftpPath',
     [(tmuxSocketPath)]='tmuxSocketPath',
+    [(tmuxExecutablePath)]='tmuxExecutablePath',
     *ngIf='sftpPanelVisible && sshSession',
     (click)='$event.stopPropagation()',
     [session]='sshSession!',

@@ -2657,3 +2657,12 @@ msgstr "没有需要重连的 SSH 标签"
 
 msgid "tmux socket path (optional)"
 msgstr "tmux socket 路径（可选）"
+
+msgid "tmux executable path (optional)"
+msgstr "tmux 可执行文件路径（可选）"
+
+msgid "Unexpected tmux output"
+msgstr "tmux 输出格式异常"
+
+msgid "tmux returned no output; check the executable and socket paths"
+msgstr "tmux 没有返回输出，请检查可执行文件和 socket 路径"

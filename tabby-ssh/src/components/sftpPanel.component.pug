@@ -25,6 +25,13 @@
         button.btn.btn-link.btn-sm(ngbDropdownToggle, type='button') tmux
         .bg-dark(ngbDropdownMenu)
             .px-3.py-2
+                label.form-label(for='tmux-executable-path', translate) tmux executable path (optional)
+                input#tmux-executable-path.form-control.form-control-sm.mb-2(
+                    type='text',
+                    [ngModel]='tmuxExecutablePath',
+                    (ngModelChange)='onTmuxExecutablePathChange($event)',
+                    (keydown.enter)='loadTmuxPanes()'
+                )
                 label.form-label(for='tmux-socket-path', translate) tmux socket path (optional)
                 input#tmux-socket-path.form-control.form-control-sm(
                     type='text',

@@ -29,6 +29,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     sftpPanelVisible = false
     sftpPath = '/'
     tmuxSocketPath = ''
+    tmuxExecutablePath = ''
     enableToolbar = true
     activeKIPrompt: KeyboardInteractivePrompt|null = null
     private connectingSSH = false

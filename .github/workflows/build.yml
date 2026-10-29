@@ -9,6 +9,40 @@ permissions:
   contents: write
 
 jobs:
+  tmux-compat:
+    name: tmux compatibility (${{ matrix.version }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['3.0a', '3.4']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build tmux and install test dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libevent-dev libncurses-dev pkg-config
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/tmux.tar.gz" "https://github.com/tmux/tmux/releases/download/${{ matrix.version }}/tmux-${{ matrix.version }}.tar.gz"
+          tar -xzf "$RUNNER_TEMP/tmux.tar.gz" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/tmux-${{ matrix.version }}"
+          ./configure --prefix="$RUNNER_TEMP/tmux-install"
+          make -j2
+          make install
+          npm install --prefix "$RUNNER_TEMP/tmux-test" --no-save --no-package-lock typescript@5.2.2 shell-quote@1.7.4
+          echo "$RUNNER_TEMP/tmux-install/bin" >> "$GITHUB_PATH"
+          echo "NODE_PATH=$RUNNER_TEMP/tmux-test/node_modules" >> "$GITHUB_ENV"
+          echo "TMUX_BINARY=$RUNNER_TEMP/tmux-install/bin/tmux" >> "$GITHUB_ENV"
+      - name: Verify pane discovery and directories
+        run: node tabby-ssh/test/tmuxVersion.integration.cjs
+        env:
+          EXPECT_TMUX_VERSION: ${{ matrix.version }}
+
   macos:
     name: macOS (${{ matrix.arch }})
     runs-on: macos-15
@@ -162,6 +196,7 @@ jobs:
     name: Publish release packages
     runs-on: ubuntu-24.04
     needs:
+      - tmux-compat
       - macos
       - windows
 
