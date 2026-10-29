@@ -27,21 +27,51 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libevent-dev libncurses-dev pkg-config
+          sudo apt-get install -y build-essential libevent-dev libncurses-dev pkg-config openssh-server
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/tmux.tar.gz" "https://github.com/tmux/tmux/releases/download/${{ matrix.version }}/tmux-${{ matrix.version }}.tar.gz"
           tar -xzf "$RUNNER_TEMP/tmux.tar.gz" -C "$RUNNER_TEMP"
           cd "$RUNNER_TEMP/tmux-${{ matrix.version }}"
           ./configure --prefix="$RUNNER_TEMP/tmux-install"
           make -j2
           make install
-          npm install --prefix "$RUNNER_TEMP/tmux-test" --no-save --no-package-lock typescript@5.2.2 shell-quote@1.7.4
+          npm install --prefix "$RUNNER_TEMP/tmux-test" --no-save --no-package-lock typescript@5.2.2 shell-quote@1.7.4 russh@0.1.37 rxjs@7
           echo "$RUNNER_TEMP/tmux-install/bin" >> "$GITHUB_PATH"
           echo "NODE_PATH=$RUNNER_TEMP/tmux-test/node_modules" >> "$GITHUB_ENV"
           echo "TMUX_BINARY=$RUNNER_TEMP/tmux-install/bin/tmux" >> "$GITHUB_ENV"
       - name: Verify pane discovery and directories
-        run: node tabby-ssh/test/tmuxVersion.integration.cjs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tmux-env" "$RUNNER_TEMP/test-ssh"
+          chmod 700 "$RUNNER_TEMP/tmux-env"
+          chmod 755 "$RUNNER_TEMP/test-ssh"
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/test-ssh/host"
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/test-ssh/client"
+          cp "$RUNNER_TEMP/test-ssh/client.pub" "$RUNNER_TEMP/test-ssh/authorized_keys"
+          cat > "$RUNNER_TEMP/test-ssh/sshd_config" <<CONFIG
+          Port 39278
+          ListenAddress 127.0.0.1
+          HostKey $RUNNER_TEMP/test-ssh/host
+          PidFile $RUNNER_TEMP/test-ssh/sshd.pid
+          AuthorizedKeysFile $RUNNER_TEMP/test-ssh/authorized_keys
+          StrictModes no
+          UsePAM no
+          PasswordAuthentication no
+          PubkeyAuthentication yes
+          SetEnv TMUX_TMPDIR=$RUNNER_TEMP/tmux-env PATH=$RUNNER_TEMP/tmux-install/bin:/usr/bin:/bin
+          CONFIG
+          sudo mkdir -p /run/sshd
+          sudo /usr/sbin/sshd -D -e -f "$RUNNER_TEMP/test-ssh/sshd_config" > "$RUNNER_TEMP/test-ssh/log" 2>&1 &
+          sshd_pid=$!
+          trap 'sudo kill "$sshd_pid" 2>/dev/null || true' EXIT
+          sleep 2
+          if ! kill -0 "$sshd_pid" 2>/dev/null; then cat "$RUNNER_TEMP/test-ssh/log"; exit 1; fi
+          node tabby-ssh/test/tmuxVersion.integration.cjs
         env:
           EXPECT_TMUX_VERSION: ${{ matrix.version }}
+          TMUX_TMPDIR: ${{ runner.temp }}/tmux-env
+          TEST_SSH_PORT: '39278'
+          TEST_SSH_KEY: ${{ runner.temp }}/test-ssh/client
 
   macos:
     name: macOS (${{ matrix.arch }})

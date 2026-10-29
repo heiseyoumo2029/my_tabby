@@ -1,11 +1,12 @@
-/* Run on Linux CI with tmux, typescript and shell-quote installed. */
+/* Run on Linux CI with tmux and an isolated local SSH server. */
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
-const { execFileSync, spawn } = require('node:child_process')
+const { execFileSync } = require('node:child_process')
 const ts = require('typescript')
 const shellQuote = require('shell-quote')
+const russh = require('russh')
 const vm = require('node:vm')
 
 const source = fs.readFileSync('tabby-ssh/src/session/ssh.ts', 'utf8')
@@ -16,31 +17,8 @@ const js = ts.transpileModule(`class QueryTest { ${query.getText(tree)} }\nexpor
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText
 
-class Event {
-    constructor () { this.listeners = [] }
-    subscribe (listener) {
-        this.listeners.push(listener)
-        return { unsubscribe: () => { this.listeners = this.listeners.filter(x => x !== listener) } }
-    }
-    emit (value) { for (const listener of this.listeners) listener(value) }
-}
-class AuthenticatedSSHClient {
-    async openSessionChannel () { return {} }
-    async activateChannel () {
-        return {
-            data$: new Event(), extendedData$: new Event(), eof$: new Event(), closed$: new Event(),
-            async close () {},
-            async requestExec (command) {
-                const child = spawn('/bin/sh', ['-c', command], { env: process.env })
-                child.stdout.on('data', data => this.data$.emit(data))
-                child.stderr.on('data', data => this.extendedData$.emit([1, data]))
-                child.on('close', () => { this.eof$.emit(); this.closed$.emit() })
-            },
-        }
-    }
-}
 const moduleExports = {}
-vm.runInNewContext(js, { exports: moduleExports, russh: { AuthenticatedSSHClient }, shellQuote, Buffer, setTimeout, clearTimeout })
+vm.runInNewContext(js, { exports: moduleExports, russh, shellQuote, Buffer, setTimeout, clearTimeout })
 
 async function main () {
     const version = execFileSync('tmux', ['-V'], { encoding: 'utf8' }).trim()
@@ -50,14 +28,20 @@ async function main () {
     const second = path.join(temp, 'two')
     fs.mkdirSync(first)
     fs.mkdirSync(second)
-    process.env.TMUX_TMPDIR = temp
+    assert.ok(process.env.TMUX_TMPDIR, 'CI must provide an isolated TMUX_TMPDIR')
     delete process.env.TMUX
     const tmux = args => execFileSync('tmux', args, { encoding: 'utf8', env: process.env })
+    let connection = null
     try {
         tmux(['new-session', '-d', '-s', 'tabby-test', '-c', first, 'sleep 120'])
         tmux(['split-window', '-d', '-t', 'tabby-test', '-c', second, 'sleep 120'])
         const query = new moduleExports.QueryTest()
-        query.ssh = new AuthenticatedSSHClient()
+        const transport = await russh.SshTransport.newSocket(`127.0.0.1:${process.env.TEST_SSH_PORT}`)
+        const client = await russh.SSHClient.connect(transport, async () => true)
+        const key = await russh.KeyPair.parse(fs.readFileSync(process.env.TEST_SSH_KEY, 'utf8'))
+        connection = await client.authenticateWithKeyPair(os.userInfo().username, key, null)
+        assert.ok(connection instanceof russh.AuthenticatedSSHClient, 'test SSH authentication failed')
+        query.ssh = connection
         const lines = (await query.queryTmux()).trim().split('\n')
         assert.equal(lines.length, 2)
         const panes = lines.map(line => {
@@ -70,8 +54,9 @@ async function main () {
         const socket = tmux(['display-message', '-p', '#{socket_path}']).trim()
         assert.equal((await query.queryTmux(undefined, socket)).trim().split('\n').length, 2)
         assert.equal((await query.queryTmux(panes[0], socket, process.env.TMUX_BINARY)).trim(), dirs[0])
-        console.log(`${version}: discovered ${panes.length} panes and their working directories`)
+        console.log(`${version}: discovered ${panes.length} panes and their working directories over SSH`)
     } finally {
+        if (connection instanceof russh.AuthenticatedSSHClient) await connection.disconnect()
         try { tmux(['kill-server']) } catch {}
         fs.rmSync(temp, { recursive: true, force: true })
     }
