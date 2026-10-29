@@ -2642,3 +2642,18 @@ msgstr "无法访问目标目录"
 
 msgid "Transfer"
 msgstr "传输"
+
+msgid "Choose which SSH tabs to reconnect. Reconnecting all will interrupt active shell sessions."
+msgstr "选择要重连的 SSH 标签。重连全部会中断已连接的 shell 会话。"
+
+msgid "Reconnect disconnected only"
+msgstr "仅重连已断开的会话"
+
+msgid "Reconnect all"
+msgstr "重连全部"
+
+msgid "No SSH tabs need reconnection"
+msgstr "没有需要重连的 SSH 标签"
+
+msgid "tmux socket path (optional)"
+msgstr "tmux socket 路径（可选）"

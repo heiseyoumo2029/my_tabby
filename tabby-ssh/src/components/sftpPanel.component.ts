@@ -30,6 +30,8 @@ export class SFTPPanelComponent {
     @Output() pathChange = new EventEmitter<string>()
     pathSegments: PathSegment[] = []
     @Input() cwdDetectionAvailable = false
+    @Input() tmuxSocketPath = ''
+    @Output() tmuxSocketPathChange = new EventEmitter<string>()
     editingPath: string|null = null
     showFilter = false
     filterText = ''
@@ -106,9 +108,19 @@ export class SFTPPanelComponent {
         await this.navigate(cwd)
     }
 
+    onTmuxSocketPathChange (value: string): void {
+        this.tmuxSocketPath = value
+        this.tmuxPanes = []
+        this.tmuxSocketPathChange.emit(value)
+    }
+
     async loadTmuxPanes (): Promise<void> {
+        const socketPath = this.tmuxSocketPath
         try {
-            const result = await this.session.queryTmux()
+            const result = await this.session.queryTmux(undefined, socketPath)
+            if (socketPath !== this.tmuxSocketPath) {
+                return
+            }
             this.tmuxPanes = result.split('\n').map(line => /^(%[0-9]+) (.*)$/.exec(line))
                 .filter((match): match is RegExpExecArray => !!match)
                 .map(match => ({ id: match[1], label: `${match[2]} (${match[1]})` }))
@@ -116,14 +128,21 @@ export class SFTPPanelComponent {
                 this.notifications.error(this.translate.instant('No tmux panes found'))
             }
         } catch (error) {
+            if (socketPath !== this.tmuxSocketPath) {
+                return
+            }
             this.tmuxPanes = []
             this.notifications.error(`${this.translate.instant('Could not list tmux panes')}: ${error.message}`)
         }
     }
 
     async navigateToTmuxPane (id: string): Promise<void> {
+        const socketPath = this.tmuxSocketPath
         try {
-            const cwd = (await this.session.queryTmux(id)).replace(/\n$/, '')
+            const cwd = (await this.session.queryTmux(id, socketPath)).replace(/\n$/, '')
+            if (socketPath !== this.tmuxSocketPath) {
+                return
+            }
             if (!cwd.startsWith('/')) {
                 throw new Error('tmux did not return an absolute path')
             }

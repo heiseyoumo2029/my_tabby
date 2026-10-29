@@ -28,8 +28,10 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     session: SSHShellSession|null = null
     sftpPanelVisible = false
     sftpPath = '/'
+    tmuxSocketPath = ''
     enableToolbar = true
     activeKIPrompt: KeyboardInteractivePrompt|null = null
+    private connectingSSH = false
     private static reconnectingAllSSH = false
 
     get reconnectingAllSSH (): boolean { return SSHTabComponent.reconnectingAllSSH }
@@ -201,17 +203,25 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     }
 
     async initializeSession (): Promise<void> {
-        await super.initializeSession()
+        if (this.connectingSSH) {
+            return
+        }
+        this.connectingSSH = true
         try {
-            await this.initializeSessionMaybeMultiplex(true)
-        } catch {
+            await super.initializeSession()
             try {
-                await this.initializeSessionMaybeMultiplex(false)
-            } catch (e) {
-                console.error('SSH session initialization failed', e)
-                this.write(colors.black.bgRed(' X ') + ' ' + colors.red(e.message) + '\r\n')
-                return
+                await this.initializeSessionMaybeMultiplex(true)
+            } catch {
+                try {
+                    await this.initializeSessionMaybeMultiplex(false)
+                } catch (e) {
+                    console.error('SSH session initialization failed', e)
+                    this.write(colors.black.bgRed(' X ') + ' ' + colors.red(e.message) + '\r\n')
+                    return
+                }
             }
+        } finally {
+            this.connectingSSH = false
         }
     }
 
@@ -236,22 +246,29 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         const tabs = this.app.tabs.flatMap(tab => tab instanceof SplitTabComponent ? tab.getAllTabs() : [tab])
             .filter((tab): tab is SSHTabComponent => tab instanceof SSHTabComponent)
         let failed = 0
+        let attempted = 0
         try {
             const response = await this.platform.showMessageBox({
                 type: 'warning',
-                message: this.translate.instant(_('Reconnect all SSH tabs? Active shell sessions will be interrupted.')),
-                buttons: [this.translate.instant(_('Reconnect')), this.translate.instant(_('Cancel'))],
-                defaultId: 1,
-                cancelId: 1,
+                message: this.translate.instant(_('Choose which SSH tabs to reconnect. Reconnecting all will interrupt active shell sessions.')),
+                buttons: [
+                    this.translate.instant(_('Reconnect disconnected only')),
+                    this.translate.instant(_('Reconnect all')),
+                    this.translate.instant(_('Cancel')),
+                ],
+                defaultId: 0,
+                cancelId: 2,
             })
-            if (response.response !== 0) {
+            if (response.response !== 0 && response.response !== 1) {
                 return
             }
+            const disconnectedOnly = response.response === 0
             for (const tab of tabs) {
                 const stillOpen = this.app.tabs.some(top => top === tab || top instanceof SplitTabComponent && top.getAllTabs().includes(tab))
-                if (!stillOpen) {
+                if (!stillOpen || tab.connectingSSH || (disconnectedOnly && tab.session?.open)) {
                     continue
                 }
+                attempted++
                 try {
                     await tab.reconnect()
                     if (!tab.session?.open) {
@@ -267,8 +284,10 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         }
         if (failed) {
             this.notifications.error(this.translate.instant(_('Some SSH tabs could not be reconnected')))
-        } else {
+        } else if (attempted) {
             this.notifications.notice(this.translate.instant(_('SSH tabs reconnected')))
+        } else {
+            this.notifications.notice(this.translate.instant(_('No SSH tabs need reconnection')))
         }
     }
 

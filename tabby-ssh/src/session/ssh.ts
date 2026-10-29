@@ -371,16 +371,20 @@ export class SSHSession {
         return new SFTPSession(this.sftp, this.injector)
     }
 
-    /** Run a fixed, non-interactive tmux query without writing to the user's shell. */
-    async queryTmux (pane?: string): Promise<string> {
+    /** Run a non-interactive tmux query without writing to the user's shell. */
+    async queryTmux (pane?: string, socketPath = ''): Promise<string> {
         if (!(this.ssh instanceof russh.AuthenticatedSSHClient)) {
             throw new Error('Cannot query tmux before auth')
         }
         if (pane && !/^%[0-9]+$/.test(pane)) {
             throw new Error('Invalid tmux pane ID')
         }
+        if (socketPath && (!socketPath.startsWith('/') || socketPath.includes('\0'))) {
+            throw new Error('tmux socket path must be an absolute path')
+        }
         const channel = await this.ssh.activateChannel(await this.ssh.openSessionChannel())
         const chunks: Buffer[] = []
+        const errors: Buffer[] = []
         let size = 0
         let timer: ReturnType<typeof setTimeout>|undefined = undefined
         const subscriptions: { unsubscribe: () => void }[] = []
@@ -395,13 +399,26 @@ export class SSHSession {
                         chunks.push(Buffer.from(data))
                     }
                 }))
+                subscriptions.push(channel.extendedData$.subscribe(([, data]) => {
+                    size += data.length
+                    if (size > 1024 * 1024) {
+                        reject(new Error('tmux query output too large'))
+                    } else {
+                        errors.push(Buffer.from(data))
+                    }
+                }))
                 subscriptions.push(channel.eof$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
                 subscriptions.push(channel.closed$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
             })
-            const command = pane
-                ? `tmux display-message -p -t ${pane} '#{pane_current_path}'`
-                : 'tmux list-panes -a -F \'#{pane_id} #{session_name}:#{window_index}.#{pane_index}\''
-            return (await Promise.all([channel.requestExec(command), output]))[1]
+            const command = ['tmux', ...(socketPath ? ['-S', socketPath] : [])]
+            command.push(...(pane
+                ? ['display-message', '-p', '-t', pane, '#{pane_current_path}']
+                : ['list-panes', '-a', '-F', '#{pane_id} #{session_name}:#{window_index}.#{pane_index}']))
+            const result = (await Promise.all([channel.requestExec(shellQuote.quote(command)), output]))[1]
+            if (!result && errors.length) {
+                throw new Error(Buffer.concat(errors).toString('utf8').trim())
+            }
+            return result
         } finally {
             clearTimeout(timer)
             subscriptions.forEach(subscription => subscription.unsubscribe())

@@ -21,9 +21,18 @@
         i.fas.fa-crosshairs.me-1
         div(translate) Terminal directory
 
-    .flex-shrink-0(ngbDropdown, container='body', (openChange)='$event && loadTmuxPanes()')
+    .flex-shrink-0(ngbDropdown, container='body', [autoClose]='"outside"', (openChange)='$event && loadTmuxPanes()')
         button.btn.btn-link.btn-sm(ngbDropdownToggle, type='button') tmux
         .bg-dark(ngbDropdownMenu)
+            .px-3.py-2
+                label.form-label(for='tmux-socket-path', translate) tmux socket path (optional)
+                input#tmux-socket-path.form-control.form-control-sm(
+                    type='text',
+                    [ngModel]='tmuxSocketPath',
+                    (ngModelChange)='onTmuxSocketPathChange($event)',
+                    (keydown.enter)='loadTmuxPanes()'
+                )
+                button.btn.btn-link.btn-sm(type='button', (click)='loadTmuxPanes()', translate) Refresh
             button(ngbDropdownItem, *ngFor='let pane of tmuxPanes', (click)='navigateToTmuxPane(pane.id)') {{pane.label}}
 
     button.btn.btn-link.btn-sm.flex-shrink-0.d-flex((click)='navigate(path)')
