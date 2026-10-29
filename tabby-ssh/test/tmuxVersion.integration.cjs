@@ -40,7 +40,9 @@ async function main () {
         const client = await russh.SSHClient.connect(transport, async () => true)
         const key = await russh.KeyPair.parse(fs.readFileSync(process.env.TEST_SSH_KEY, 'utf8'))
         connection = await client.authenticateWithKeyPair(os.userInfo().username, key, null)
-        assert.ok(connection instanceof russh.AuthenticatedSSHClient, `test SSH authentication failed: ${JSON.stringify(connection)}`)
+        if (!(connection instanceof russh.AuthenticatedSSHClient)) {
+            throw new Error(`test SSH authentication failed: ${JSON.stringify(connection)}`)
+        }
         query.ssh = connection
         const lines = (await query.queryTmux()).trim().split('\n')
         assert.equal(lines.length, 2)
