@@ -2666,3 +2666,18 @@ msgstr "tmux 输出格式异常"
 
 msgid "tmux returned no output; check the executable and socket paths"
 msgstr "tmux 没有返回输出，请检查可执行文件和 socket 路径"
+
+msgid "Sort"
+msgstr "排序"
+
+msgid "Name: A to Z"
+msgstr "文件名：升序"
+
+msgid "Name: Z to A"
+msgstr "文件名：降序"
+
+msgid "Modified: oldest first"
+msgstr "修改时间：从旧到新"
+
+msgid "Modified: newest first"
+msgstr "修改时间：从新到旧"

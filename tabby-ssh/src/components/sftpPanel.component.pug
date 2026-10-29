@@ -46,6 +46,16 @@
         i.fas.fa-sync-alt.me-1
         div(translate) Refresh
 
+    .flex-shrink-0(ngbDropdown, container='body')
+        button.btn.btn-link.btn-sm(ngbDropdownToggle, type='button')
+            i.fas.fa-sort.me-1
+            span(translate) Sort
+        .bg-dark(ngbDropdownMenu)
+            button(ngbDropdownItem, type='button', [class.active]='sortField === "name" && sortDirection === "ascending"', (click)='selectSort("name", "ascending")', translate) Name: A to Z
+            button(ngbDropdownItem, type='button', [class.active]='sortField === "name" && sortDirection === "descending"', (click)='selectSort("name", "descending")', translate) Name: Z to A
+            button(ngbDropdownItem, type='button', [class.active]='sortField === "modified" && sortDirection === "ascending"', (click)='selectSort("modified", "ascending")', translate) Modified: oldest first
+            button(ngbDropdownItem, type='button', [class.active]='sortField === "modified" && sortDirection === "descending"', (click)='selectSort("modified", "descending")', translate) Modified: newest first
+
     button.btn.btn-link.btn-sm.flex-shrink-0.d-flex(*ngIf='!showFilter', (click)='showFilter = true')
         i.fas.fa-filter.me-1
         div(translate) Filter

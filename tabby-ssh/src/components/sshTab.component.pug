@@ -52,6 +52,8 @@ sftp-panel.bg-dark(
     [(path)]='sftpPath',
     [(tmuxSocketPath)]='tmuxSocketPath',
     [(tmuxExecutablePath)]='tmuxExecutablePath',
+    [(sortField)]='sftpSortField',
+    [(sortDirection)]='sftpSortDirection',
     *ngIf='sftpPanelVisible && sshSession',
     (click)='$event.stopPropagation()',
     [session]='sshSession!',

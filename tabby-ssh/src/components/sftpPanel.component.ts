@@ -5,6 +5,7 @@ import { FileUpload, DirectoryUpload, DirectoryDownload, MenuItemOptions, Notifi
 import { SFTPSession, SFTPFile } from '../session/sftp'
 import { SSHSession } from '../session/ssh'
 import { SSHShellSession } from '../session/shell'
+import { SFTPSortDirection, SFTPSortField, sortSFTPFiles } from '../session/sftpSort'
 import { SFTPContextMenuItemProvider } from '../api'
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap'
 import { SFTPCreateDirectoryModalComponent } from './sftpCreateDirectoryModal.component'
@@ -34,6 +35,10 @@ export class SFTPPanelComponent {
     @Output() tmuxSocketPathChange = new EventEmitter<string>()
     @Input() tmuxExecutablePath = ''
     @Output() tmuxExecutablePathChange = new EventEmitter<string>()
+    @Input() sortField: SFTPSortField = 'name'
+    @Output() sortFieldChange = new EventEmitter<SFTPSortField>()
+    @Input() sortDirection: SFTPSortDirection = 'ascending'
+    @Output() sortDirectionChange = new EventEmitter<SFTPSortDirection>()
     editingPath: string|null = null
     showFilter = false
     filterText = ''
@@ -93,12 +98,19 @@ export class SFTPPanelComponent {
             return
         }
 
-        const dirKey = a => a.isDirectory ? 1 : 0
-        this.fileList.sort((a, b) =>
-            dirKey(b) - dirKey(a) ||
-            a.name.localeCompare(b.name))
-
+        this.fileList = sortSFTPFiles(this.fileList, this.sortField, this.sortDirection)
         this.updateFilteredList()
+    }
+
+    selectSort (field: SFTPSortField, direction: SFTPSortDirection): void {
+        this.sortField = field
+        this.sortDirection = direction
+        this.sortFieldChange.emit(field)
+        this.sortDirectionChange.emit(direction)
+        if (this.fileList) {
+            this.fileList = sortSFTPFiles(this.fileList, field, direction)
+            this.updateFilteredList()
+        }
     }
 
     async navigateToShellDirectory (): Promise<void> {

@@ -11,6 +11,7 @@ import { SSHPortForwardingModalComponent } from './sshPortForwardingModal.compon
 import { SSHProfile } from '../api'
 import { SSHShellSession } from '../session/shell'
 import { SSHMultiplexerService } from '../services/sshMultiplexer.service'
+import { SFTPSortDirection, SFTPSortField } from '../session/sftpSort'
 
 /** @hidden */
 @Component({
@@ -30,6 +31,8 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     sftpPath = '/'
     tmuxSocketPath = ''
     tmuxExecutablePath = ''
+    sftpSortField: SFTPSortField = 'name'
+    sftpSortDirection: SFTPSortDirection = 'ascending'
     enableToolbar = true
     activeKIPrompt: KeyboardInteractivePrompt|null = null
     private connectingSSH = false
