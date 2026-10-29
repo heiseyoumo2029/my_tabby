@@ -1,10 +1,18 @@
 terminal-toolbar([tab]='this')
     i.fas.fa-xs.fa-circle.text-success.me-2(*ngIf='session && session.open')
     i.fas.fa-xs.fa-circle.text-danger.me-2(*ngIf='!session || !session.open')
-    strong.me-auto(
+    strong(
         style='user-select: text; cursor: text;'
         onclick='event.stopPropagation()'
-    ) {{profile.options.user}}@{{profile.options.host}}:{{profile.options.port}}
+    ) {{profile.options.user}}@{{profile.options.host}}:{{profile.options.port ?? 22}}
+
+    .me-auto.ms-2(ngbDropdown, container='body', placement='bottom-left bottom', (click)='$event.stopPropagation()')
+        button.btn.btn-sm.btn-link(ngbDropdownToggle, type='button', aria-label='Copy connection details', title='Copy connection details')
+            i.far.fa-copy
+        .bg-dark(ngbDropdownMenu)
+            button(ngbDropdownItem, (click)='copyConnectionDetail("host")', translate) Copy host
+            button(ngbDropdownItem, (click)='copyConnectionDetail("port")', translate) Copy port
+            button(ngbDropdownItem, (click)='copyConnectionDetail("address")', translate) Copy host and port
 
     .me-2(
         ngbDropdown,
@@ -25,6 +33,10 @@ terminal-toolbar([tab]='this')
         i.fas.fa-redo
         span(translate) Reconnect
 
+    button.btn.btn-sm.btn-link.me-2((click)='reconnectAllSSH()', [disabled]='reconnectingAllSSH')
+        i.fas.fa-sync-alt
+        span(translate) Reconnect all SSH tabs
+
     button.btn.btn-sm.btn-link.me-2((click)='openSFTP()', *ngIf='session && session.open')
         i.far.fa-folder-open
         span SFTP
@@ -44,6 +56,7 @@ sftp-panel.bg-dark(
     *ngIf='sftpPanelVisible && sshSession',
     (click)='$event.stopPropagation()',
     [session]='sshSession!',
+    [shellSession]='session',
     [cwdDetectionAvailable]='session?.supportsWorkingDirectory() ?? false',
     (closed)='sftpPanelVisible = false'
 )

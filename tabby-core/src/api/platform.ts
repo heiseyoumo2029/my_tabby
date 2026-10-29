@@ -155,6 +155,11 @@ export abstract class PlatformService {
     protected displayMetricsChanged = new Subject<void>()
     protected themeChanged = new Subject<PlatformTheme>()
 
+    /** Register a transfer created by a plugin with the shared transfers UI. */
+    registerFileTransfer (transfer: FileTransfer): void {
+        this.fileTransferStarted.next(transfer)
+    }
+
     abstract readClipboard (): string
     /**
      * Returns an image from the system clipboard, encoded in a portable format.

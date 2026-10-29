@@ -1,9 +1,10 @@
 import * as C from 'constants'
 import { posix as path } from 'path'
 import { Component, Input, Output, EventEmitter, Inject, Optional } from '@angular/core'
-import { FileUpload, DirectoryUpload, DirectoryDownload, MenuItemOptions, NotificationsService, PlatformService } from 'tabby-core'
+import { FileUpload, DirectoryUpload, DirectoryDownload, MenuItemOptions, NotificationsService, PlatformService, TranslateService } from 'tabby-core'
 import { SFTPSession, SFTPFile } from '../session/sftp'
 import { SSHSession } from '../session/ssh'
+import { SSHShellSession } from '../session/shell'
 import { SFTPContextMenuItemProvider } from '../api'
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap'
 import { SFTPCreateDirectoryModalComponent } from './sftpCreateDirectoryModal.component'
@@ -20,6 +21,7 @@ interface PathSegment {
 })
 export class SFTPPanelComponent {
     @Input() session: SSHSession
+    @Input() shellSession: SSHShellSession|null = null
     @Output() closed = new EventEmitter<void>()
     sftp: SFTPSession
     fileList: SFTPFile[]|null = null
@@ -31,10 +33,12 @@ export class SFTPPanelComponent {
     editingPath: string|null = null
     showFilter = false
     filterText = ''
+    tmuxPanes: { id: string, label: string }[] = []
 
     constructor (
         private ngbModal: NgbModal,
         private notifications: NotificationsService,
+        private translate: TranslateService,
         public platform: PlatformService,
         @Optional() @Inject(SFTPContextMenuItemProvider) protected contextMenuProviders: SFTPContextMenuItemProvider[],
     ) {
@@ -91,6 +95,42 @@ export class SFTPPanelComponent {
             a.name.localeCompare(b.name))
 
         this.updateFilteredList()
+    }
+
+    async navigateToShellDirectory (): Promise<void> {
+        const cwd = await this.shellSession?.getWorkingDirectory()
+        if (!cwd) {
+            this.notifications.error(this.translate.instant('Working directory is not available'))
+            return
+        }
+        await this.navigate(cwd)
+    }
+
+    async loadTmuxPanes (): Promise<void> {
+        try {
+            const result = await this.session.queryTmux()
+            this.tmuxPanes = result.split('\n').map(line => /^(%[0-9]+) (.*)$/.exec(line))
+                .filter((match): match is RegExpExecArray => !!match)
+                .map(match => ({ id: match[1], label: `${match[2]} (${match[1]})` }))
+            if (!this.tmuxPanes.length) {
+                this.notifications.error(this.translate.instant('No tmux panes found'))
+            }
+        } catch (error) {
+            this.tmuxPanes = []
+            this.notifications.error(`${this.translate.instant('Could not list tmux panes')}: ${error.message}`)
+        }
+    }
+
+    async navigateToTmuxPane (id: string): Promise<void> {
+        try {
+            const cwd = (await this.session.queryTmux(id)).replace(/\n$/, '')
+            if (!cwd.startsWith('/')) {
+                throw new Error('tmux did not return an absolute path')
+            }
+            await this.navigate(cwd)
+        } catch (error) {
+            this.notifications.error(`${this.translate.instant('Could not get tmux pane directory')}: ${error.message}`)
+        }
     }
 
     getFileType (fileExtension: string): string {

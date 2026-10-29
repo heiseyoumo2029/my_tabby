@@ -3,7 +3,7 @@ import { marker as _ } from '@biesbjerg/ngx-translate-extract-marker'
 import colors from 'ansi-colors'
 import { Component, Injector, HostListener } from '@angular/core'
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap'
-import { Platform, ProfilesService } from 'tabby-core'
+import { Platform, ProfilesService, SplitTabComponent } from 'tabby-core'
 import { BaseTerminalTabComponent, ConnectableTerminalTabComponent } from 'tabby-terminal'
 import { SSHService } from '../services/ssh.service'
 import { KeyboardInteractivePrompt, SSHSession } from '../session/ssh'
@@ -30,6 +30,9 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     sftpPath = '/'
     enableToolbar = true
     activeKIPrompt: KeyboardInteractivePrompt|null = null
+    private static reconnectingAllSSH = false
+
+    get reconnectingAllSSH (): boolean { return SSHTabComponent.reconnectingAllSSH }
 
     constructor (
         injector: Injector,
@@ -215,6 +218,58 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     showPortForwarding (): void {
         const modal = this.ngbModal.open(SSHPortForwardingModalComponent).componentInstance as SSHPortForwardingModalComponent
         modal.session = this.sshSession!
+    }
+
+    copyConnectionDetail (detail: 'host'|'port'|'address'): void {
+        const host = this.profile.options.host
+        const port = String(this.profile.options.port ?? 22)
+        const formattedHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host
+        const text = detail === 'host' ? host : detail === 'port' ? port : `${formattedHost}:${port}`
+        this.platform.setClipboard({ text })
+    }
+
+    async reconnectAllSSH (): Promise<void> {
+        if (this.reconnectingAllSSH) {
+            return
+        }
+        SSHTabComponent.reconnectingAllSSH = true
+        const tabs = this.app.tabs.flatMap(tab => tab instanceof SplitTabComponent ? tab.getAllTabs() : [tab])
+            .filter((tab): tab is SSHTabComponent => tab instanceof SSHTabComponent)
+        let failed = 0
+        try {
+            const response = await this.platform.showMessageBox({
+                type: 'warning',
+                message: this.translate.instant(_('Reconnect all SSH tabs? Active shell sessions will be interrupted.')),
+                buttons: [this.translate.instant(_('Reconnect')), this.translate.instant(_('Cancel'))],
+                defaultId: 1,
+                cancelId: 1,
+            })
+            if (response.response !== 0) {
+                return
+            }
+            for (const tab of tabs) {
+                const stillOpen = this.app.tabs.some(top => top === tab || top instanceof SplitTabComponent && top.getAllTabs().includes(tab))
+                if (!stillOpen) {
+                    continue
+                }
+                try {
+                    await tab.reconnect()
+                    if (!tab.session?.open) {
+                        failed++
+                    }
+                } catch (error) {
+                    failed++
+                    this.logger.error('Could not reconnect SSH tab', error)
+                }
+            }
+        } finally {
+            SSHTabComponent.reconnectingAllSSH = false
+        }
+        if (failed) {
+            this.notifications.error(this.translate.instant(_('Some SSH tabs could not be reconnected')))
+        } else {
+            this.notifications.notice(this.translate.instant(_('SSH tabs reconnected')))
+        }
     }
 
     async canClose (): Promise<boolean> {

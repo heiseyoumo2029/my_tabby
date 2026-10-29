@@ -17,6 +17,15 @@
 
     .breadcrumb-spacer.flex-grow-1.h-100((dblclick)='editPath()')
 
+    button.btn.btn-link.btn-sm.flex-shrink-0.d-flex((click)='navigateToShellDirectory()', [disabled]='!cwdDetectionAvailable')
+        i.fas.fa-crosshairs.me-1
+        div(translate) Terminal directory
+
+    .flex-shrink-0(ngbDropdown, container='body', (openChange)='$event && loadTmuxPanes()')
+        button.btn.btn-link.btn-sm(ngbDropdownToggle, type='button') tmux
+        .bg-dark(ngbDropdownMenu)
+            button(ngbDropdownItem, *ngFor='let pane of tmuxPanes', (click)='navigateToTmuxPane(pane.id)') {{pane.label}}
+
     button.btn.btn-link.btn-sm.flex-shrink-0.d-flex((click)='navigate(path)')
         i.fas.fa-sync-alt.me-1
         div(translate) Refresh

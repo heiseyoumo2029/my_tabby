@@ -2579,3 +2579,48 @@ msgstr "缩小"
 msgctxt "[Dynamic] port forwarding"
 msgid "id.port-forwarding.dynamic"
 msgstr "动态端口转发"
+
+msgid "Copy host"
+msgstr "复制主机地址"
+
+msgid "Copy port"
+msgstr "复制端口"
+
+msgid "Copy host and port"
+msgstr "复制主机地址和端口"
+
+msgid "Reconnect all SSH tabs"
+msgstr "重连所有 SSH 标签"
+
+msgid "Reconnect all SSH tabs? Active shell sessions will be interrupted."
+msgstr "重连所有 SSH 标签？当前 shell 会话将被中断。"
+
+msgid "Some SSH tabs could not be reconnected"
+msgstr "部分 SSH 标签重连失败"
+
+msgid "SSH tabs reconnected"
+msgstr "SSH 标签已重连"
+
+msgid "Terminal directory"
+msgstr "终端目录"
+
+msgid "Working directory is not available"
+msgstr "无法获取工作目录"
+
+msgid "Send to SSH tab"
+msgstr "发送到 SSH 标签"
+
+msgid "File transfer completed"
+msgstr "文件传输完成"
+
+msgid "File transfer failed"
+msgstr "文件传输失败"
+
+msgid "No tmux panes found"
+msgstr "未找到 tmux 窗格"
+
+msgid "Could not list tmux panes"
+msgstr "无法列出 tmux 窗格"
+
+msgid "Could not get tmux pane directory"
+msgstr "无法获取 tmux 窗格目录"
