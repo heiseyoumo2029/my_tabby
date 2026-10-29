@@ -6,13 +6,10 @@ terminal-toolbar([tab]='this')
         onclick='event.stopPropagation()'
     ) {{profile.options.user}}@{{profile.options.host}}:{{profile.options.port ?? 22}}
 
-    .me-auto.ms-2(ngbDropdown, container='body', placement='bottom-left bottom', (click)='$event.stopPropagation()')
-        button.btn.btn-sm.btn-link(ngbDropdownToggle, type='button', aria-label='Copy connection details', title='Copy connection details')
-            i.far.fa-copy
-        .bg-dark(ngbDropdownMenu)
-            button(ngbDropdownItem, (click)='copyConnectionDetail("host")', translate) Copy host
-            button(ngbDropdownItem, (click)='copyConnectionDetail("port")', translate) Copy port
-            button(ngbDropdownItem, (click)='copyConnectionDetail("address")', translate) Copy host and port
+    .me-auto.ms-2.d-flex((click)='$event.stopPropagation()')
+        button.btn.btn-sm.btn-link(type='button', (click)='copyConnectionDetail("host")', translate) Copy host
+        button.btn.btn-sm.btn-link(type='button', (click)='copyConnectionDetail("port")', translate) Copy port
+        button.btn.btn-sm.btn-link(type='button', (click)='copyConnectionDetail("address")', translate) Copy host and port
 
     .me-2(
         ngbDropdown,

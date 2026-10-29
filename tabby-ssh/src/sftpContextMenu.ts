@@ -8,6 +8,7 @@ import { SFTPDeleteModalComponent } from './components/sftpDeleteModal.component
 import { SFTPPanelComponent } from './components/sftpPanel.component'
 import { SSHTabComponent } from './components/sshTab.component'
 import { TabFileTransfer } from './session/tabTransfer'
+import { SFTPTransferDestinationModalComponent } from './components/sftpTransferDestinationModal.component'
 
 
 /** @hidden */
@@ -53,8 +54,7 @@ export class CommonSFTPContextMenu extends SFTPContextMenuItemProvider {
 
         if (!item.isDirectory && !item.isSymlink && item.name !== '.' && item.name !== '..' && path.basename(item.name) === item.name) {
             const targets = this.app.tabs.flatMap(tab => tab instanceof SplitTabComponent ? tab.getAllTabs() : [tab])
-                .filter((tab): tab is SSHTabComponent => tab instanceof SSHTabComponent && !!tab.session?.open && !!tab.sshSession &&
-                    (tab.sshSession !== panel.session || path.join(tab.sftpPath, item.name) !== item.fullPath))
+                .filter((tab): tab is SSHTabComponent => tab instanceof SSHTabComponent && !!tab.session?.open && !!tab.sshSession)
             if (targets.length) {
                 items.push({
                     label: this.translate.instant('Send to SSH tab'),
@@ -93,8 +93,24 @@ export class CommonSFTPContextMenu extends SFTPContextMenuItemProvider {
             if (!tab.session?.open || !tab.sshSession) {
                 throw new Error('Target SSH session is disconnected')
             }
-            const destinationPath = path.join(tab.sftpPath, item.name)
-            const destination = await tab.sshSession.openSFTP()
+            const sshSession = tab.sshSession
+            const modal = this.ngbModal.open(SFTPTransferDestinationModalComponent)
+            modal.componentInstance.session = sshSession
+            modal.componentInstance.destinationPath = tab.sftpPath
+            modal.componentInstance.target = `${tab.profile.options.user}@${tab.profile.options.host}:${tab.profile.options.port ?? 22}`
+            modal.componentInstance.fileName = item.name
+            const directory: string|null = await modal.result.catch(() => null)
+            if (typeof directory !== 'string') {
+                return
+            }
+            if (!tab.session?.open || tab.sshSession !== sshSession) {
+                throw new Error('Target SSH session is disconnected')
+            }
+            const destinationPath = path.join(directory, item.name)
+            if (sshSession === panel.session && destinationPath === item.fullPath) {
+                throw new Error('Source and destination are the same file')
+            }
+            const destination = await sshSession.openSFTP()
             const transfer = new TabFileTransfer(item)
             this.platform.registerFileTransfer(transfer)
             try {

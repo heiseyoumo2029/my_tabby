@@ -45,6 +45,7 @@ jobs:
         run: |
           node tabby-ssh/test/tabTransfer.test.cjs
           node tabby-ssh/test/tmuxQuery.test.cjs
+          node tabby-ssh/test/sshControls.test.cjs
           yarn run build
           node scripts/prepackage-plugins.mjs
           sed -i '' 's/updateInfo = await/\/\/updateInfo = await/g' node_modules/app-builder-lib/out/targets/ArchiveTarget.js
@@ -113,6 +114,7 @@ jobs:
           yarn --network-timeout 1000000
           node tabby-ssh/test/tabTransfer.test.cjs
           node tabby-ssh/test/tmuxQuery.test.cjs
+          node tabby-ssh/test/sshControls.test.cjs
           yarn run build
           node scripts/prepackage-plugins.mjs
           node scripts/build-windows.mjs

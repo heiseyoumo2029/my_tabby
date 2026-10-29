@@ -2624,3 +2624,21 @@ msgstr "无法列出 tmux 窗格"
 
 msgid "Could not get tmux pane directory"
 msgstr "无法获取 tmux 窗格目录"
+
+msgid "Choose destination directory"
+msgstr "选择目标目录"
+
+msgid "Destination directory on the remote host"
+msgstr "目标主机上的目录"
+
+msgid "Enter an absolute destination directory"
+msgstr "请输入目标目录的绝对路径"
+
+msgid "Destination is not a directory"
+msgstr "目标路径不是目录"
+
+msgid "Cannot access destination directory"
+msgstr "无法访问目标目录"
+
+msgid "Transfer"
+msgstr "传输"

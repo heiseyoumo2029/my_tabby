@@ -1,0 +1,17 @@
+.modal-header
+    h4.modal-title(translate) Choose destination directory
+    button.btn-close(type='button', (click)='cancel()', aria-label='Close')
+.modal-body
+    div.mb-2 {{target}}
+    div.mb-3 {{fileName}}
+    label.form-label(for='sftp-transfer-destination', translate) Destination directory on the remote host
+    input#sftp-transfer-destination.form-control(
+        type='text',
+        [(ngModel)]='destinationPath',
+        (keyup.enter)='confirm()',
+        autofocus
+    )
+    .text-danger.mt-2(*ngIf='error') {{error}}
+.modal-footer
+    button.btn.btn-primary(type='button', (click)='confirm()', [disabled]='checking', translate) Transfer
+    button.btn.btn-secondary(type='button', (click)='cancel()', translate) Cancel
