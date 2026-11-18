@@ -71,6 +71,10 @@ export abstract class FileTransfer {
         this.completed = completed
     }
 
+    protected getCompleted (): boolean {
+        return this.completed
+    }
+
     protected increaseProgress (bytes: number): void {
         if (!bytes) {
             return
@@ -96,6 +100,14 @@ export abstract class FileDownload extends FileTransfer {
 export abstract class DirectoryDownload extends FileTransfer {
     abstract createDirectory (relativePath: string): Promise<void>
     abstract createFile (relativePath: string, mode: number, size: number): Promise<FileDownload>
+
+    reportProgress (bytes: number): void {
+        this.increaseProgress(bytes)
+    }
+
+    isComplete (): boolean {
+        return this.getCompleted()
+    }
 }
 
 export abstract class FileUpload extends FileTransfer {

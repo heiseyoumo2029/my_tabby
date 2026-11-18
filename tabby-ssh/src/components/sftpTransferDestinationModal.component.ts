@@ -13,8 +13,42 @@ export class SFTPTransferDestinationModalComponent {
     @Input() destinationPath = '/'
     @Input() target = ''
     @Input() fileName = ''
+    @Input() shellPath = ''
+    @Input() sftpPath = '/'
+    @Input() tmuxSocketPath = ''
+    @Input() tmuxExecutablePath = ''
+    panes: { id: string, label: string }[] = []
+    loadingPanes = false
     error = ''
     checking = false
+
+    async loadTmuxPanes (): Promise<void> {
+        if (this.loadingPanes) { return }
+        this.loadingPanes = true
+        this.error = ''
+        try {
+            const output = await this.session.queryTmux(undefined, this.tmuxSocketPath, this.tmuxExecutablePath)
+            this.panes = output.split('\n').map(line => /^\s*(%[0-9]+)(?:\s+(.*?))?\s*$/.exec(line))
+                .filter((match): match is RegExpExecArray => !!match)
+                .map(match => ({ id: match[1], label: `${match[2] ?? ''} (${match[1]})` }))
+            if (!this.panes.length) { this.error = this.translate.instant('No tmux panes found') }
+        } catch (error) {
+            this.error = `${this.translate.instant('Could not list tmux panes')}: ${error.message}`
+        } finally {
+            this.loadingPanes = false
+        }
+    }
+
+    async selectTmuxPane (id: string): Promise<void> {
+        try {
+            const cwd = (await this.session.queryTmux(id, this.tmuxSocketPath, this.tmuxExecutablePath)).replace(/\n$/, '')
+            if (!path.isAbsolute(cwd)) { throw new Error('tmux did not return an absolute path') }
+            this.destinationPath = cwd
+            this.error = ''
+        } catch (error) {
+            this.error = `${this.translate.instant('Could not get tmux pane directory')}: ${error.message}`
+        }
+    }
 
     constructor (
         private modal: NgbActiveModal,

@@ -31,6 +31,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     sftpPath = '/'
     tmuxSocketPath = ''
     tmuxExecutablePath = ''
+    tmuxSelectedPane = ''
     sftpSortField: SFTPSortField = 'name'
     sftpSortDirection: SFTPSortDirection = 'ascending'
     enableToolbar = true
@@ -75,6 +76,9 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
                     break
                 case 'open-sftp':
                     this.openSFTP()
+                    break
+                case 'copy-ssh-current-path':
+                    this.copySSHCurrentPath()
                     break
             }
         })
@@ -240,6 +244,22 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         const formattedHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host
         const text = detail === 'host' ? host : detail === 'port' ? port : `${formattedHost}:${port}`
         this.platform.setClipboard({ text })
+    }
+
+    async copySSHCurrentPath (): Promise<void> {
+        try {
+            const cwd = this.tmuxSelectedPane && this.sshSession
+                ? (await this.sshSession.queryTmux(this.tmuxSelectedPane, this.tmuxSocketPath, this.tmuxExecutablePath)).replace(/\n$/, '')
+                : await this.session?.getWorkingDirectory()
+            if (!cwd || !cwd.startsWith('/')) {
+                this.notifications.error(this.translate.instant(_('Working directory is not available')))
+                return
+            }
+            this.platform.setClipboard({ text: cwd })
+            this.notifications.notice(this.translate.instant(_('Copied')))
+        } catch (error) {
+            this.notifications.error(`${this.translate.instant(_('Could not get tmux pane directory'))}: ${error.message}`)
+        }
     }
 
     async reconnectAllSSH (): Promise<void> {

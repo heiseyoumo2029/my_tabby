@@ -52,7 +52,7 @@ export class CommonSFTPContextMenu extends SFTPContextMenuItemProvider {
             })
         }
 
-        if (!item.isDirectory && !item.isSymlink && item.name !== '.' && item.name !== '..' && path.basename(item.name) === item.name) {
+        if (!item.isSymlink && item.name !== '.' && item.name !== '..' && path.basename(item.name) === item.name && !item.name.includes('\\')) {
             const targets = this.app.tabs.flatMap(tab => tab instanceof SplitTabComponent ? tab.getAllTabs() : [tab])
                 .filter((tab): tab is SSHTabComponent => tab instanceof SSHTabComponent && !!tab.session?.open && !!tab.sshSession)
             if (targets.length) {
@@ -96,7 +96,20 @@ export class CommonSFTPContextMenu extends SFTPContextMenuItemProvider {
             const sshSession = tab.sshSession
             const modal = this.ngbModal.open(SFTPTransferDestinationModalComponent)
             modal.componentInstance.session = sshSession
-            modal.componentInstance.destinationPath = tab.sftpPath
+            const cwd = await tab.session.getWorkingDirectory()
+            modal.componentInstance.destinationPath = cwd?.startsWith('/') ? cwd : tab.sftpPath
+            modal.componentInstance.shellPath = cwd?.startsWith('/') ? cwd : ''
+            modal.componentInstance.sftpPath = tab.sftpPath
+            modal.componentInstance.tmuxSocketPath = tab.tmuxSocketPath
+            modal.componentInstance.tmuxExecutablePath = tab.tmuxExecutablePath
+            if (tab.tmuxSelectedPane) {
+                try {
+                    const tmuxPath = (await sshSession.queryTmux(tab.tmuxSelectedPane, tab.tmuxSocketPath, tab.tmuxExecutablePath)).replace(/\n$/, '')
+                    if (tmuxPath.startsWith('/')) { modal.componentInstance.destinationPath = tmuxPath }
+                } catch (error) {
+                    modal.componentInstance.error = `${this.translate.instant('Could not get tmux pane directory')}: ${error.message}`
+                }
+            }
             modal.componentInstance.target = `${tab.profile.options.user}@${tab.profile.options.host}:${tab.profile.options.port ?? 22}`
             modal.componentInstance.fileName = item.name
             const directory: string|null = await modal.result.catch(() => null)
@@ -107,7 +120,11 @@ export class CommonSFTPContextMenu extends SFTPContextMenuItemProvider {
                 throw new Error('Target SSH session is disconnected')
             }
             const destinationPath = path.join(directory, item.name)
-            if (sshSession === panel.session && destinationPath === item.fullPath) {
+            const sameHost = tab.profile.options.host === panel.session.profile.options.host &&
+                (tab.profile.options.port ?? 22) === (panel.session.profile.options.port ?? 22)
+            const sourcePath = path.resolve(item.fullPath)
+            const resolvedTarget = path.resolve(destinationPath)
+            if (sameHost && (resolvedTarget === sourcePath || (item.isDirectory && resolvedTarget.startsWith(sourcePath + '/')))) {
                 throw new Error('Source and destination are the same file')
             }
             const destination = await sshSession.openSFTP()

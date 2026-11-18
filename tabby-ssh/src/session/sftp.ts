@@ -151,22 +151,26 @@ export class SFTPSession {
         }
     }
 
-    async download (path: string, transfer: FileDownload): Promise<void> {
+    async download (path: string, transfer: FileDownload, cancelled: () => boolean = () => false): Promise<void> {
         this.logger.info('Downloading', path)
+        let handle: SFTPFileHandle|null = null
         try {
-            const handle = await this.open(path, russh.OPEN_READ)
+            handle = await this.open(path, russh.OPEN_READ)
             while (true) {
+                if (cancelled() || transfer.isCancelled()) { throw new Error('Download cancelled') }
                 const chunk = await handle.read()
                 if (!chunk.length) {
                     break
                 }
+                if (cancelled() || transfer.isCancelled()) { throw new Error('Download cancelled') }
                 await transfer.write(chunk)
             }
             transfer.close()
-            handle.close()
         } catch (e) {
             transfer.cancel()
             throw e
+        } finally {
+            await handle?.close().catch(() => null)
         }
     }
 

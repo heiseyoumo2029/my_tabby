@@ -2681,3 +2681,15 @@ msgstr "修改时间：从旧到新"
 
 msgid "Modified: newest first"
 msgstr "修改时间：从新到旧"
+
+msgid "SFTP directory"
+msgstr "SFTP 目录"
+
+msgid "Select tmux pane"
+msgstr "选择 tmux 窗格"
+
+msgid "Choose a tmux pane"
+msgstr "请选择 tmux 窗格"
+
+msgid "Copy SSH or selected tmux pane directory"
+msgstr "复制 SSH 或已选择的 tmux 窗格目录"

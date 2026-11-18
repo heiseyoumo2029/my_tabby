@@ -1,7 +1,7 @@
 import * as C from 'constants'
 import { posix as path } from 'path'
 import { Component, Input, Output, EventEmitter, Inject, Optional } from '@angular/core'
-import { FileUpload, DirectoryUpload, DirectoryDownload, MenuItemOptions, NotificationsService, PlatformService, TranslateService } from 'tabby-core'
+import { FileUpload, FileDownload, DirectoryUpload, DirectoryDownload, MenuItemOptions, NotificationsService, PlatformService, TranslateService } from 'tabby-core'
 import { SFTPSession, SFTPFile } from '../session/sftp'
 import { SSHSession } from '../session/ssh'
 import { SSHShellSession } from '../session/shell'
@@ -13,6 +13,17 @@ import { SFTPCreateDirectoryModalComponent } from './sftpCreateDirectoryModal.co
 interface PathSegment {
     name: string
     path: string
+}
+
+class FolderFileDownload extends FileDownload {
+    constructor (private target: FileDownload, private folder: DirectoryDownload) { super() }
+    getName (): string { return this.target.getName() }
+    getSize (): number { return this.target.getSize() }
+    async write (data: Uint8Array): Promise<void> {
+        await this.target.write(data)
+        this.folder.reportProgress(data.length)
+    }
+    close (): void { this.target.close() }
 }
 
 @Component({
@@ -35,6 +46,8 @@ export class SFTPPanelComponent {
     @Output() tmuxSocketPathChange = new EventEmitter<string>()
     @Input() tmuxExecutablePath = ''
     @Output() tmuxExecutablePathChange = new EventEmitter<string>()
+    @Input() tmuxSelectedPane = ''
+    @Output() tmuxSelectedPaneChange = new EventEmitter<string>()
     @Input() sortField: SFTPSortField = 'name'
     @Output() sortFieldChange = new EventEmitter<SFTPSortField>()
     @Input() sortDirection: SFTPSortDirection = 'ascending'
@@ -125,12 +138,16 @@ export class SFTPPanelComponent {
     onTmuxSocketPathChange (value: string): void {
         this.tmuxSocketPath = value
         this.tmuxPanes = []
+        this.tmuxSelectedPane = ''
+        this.tmuxSelectedPaneChange.emit('')
         this.tmuxSocketPathChange.emit(value)
     }
 
     onTmuxExecutablePathChange (value: string): void {
         this.tmuxExecutablePath = value
         this.tmuxPanes = []
+        this.tmuxSelectedPane = ''
+        this.tmuxSelectedPaneChange.emit('')
         this.tmuxExecutablePathChange.emit(value)
     }
 
@@ -171,6 +188,8 @@ export class SFTPPanelComponent {
             if (!cwd.startsWith('/')) {
                 throw new Error('tmux did not return an absolute path')
             }
+            this.tmuxSelectedPane = id
+            this.tmuxSelectedPaneChange.emit(id)
             await this.navigate(cwd)
         } catch (error) {
             this.notifications.error(`${this.translate.instant('Could not get tmux pane directory')}: ${error.message}`)
@@ -343,12 +362,11 @@ export class SFTPPanelComponent {
                 return
             }
 
-            // Start background size calculation and download simultaneously
-            const sizeCalculationPromise = this.calculateFolderSizeAndUpdate(folder, transfer)
-            const downloadPromise = this.downloadFolderRecursive(folder, transfer, '')
-
             try {
-                await Promise.all([sizeCalculationPromise, downloadPromise])
+                const total = await this.calculateFolderSizeAndUpdate(folder, transfer)
+                transfer.setTotalSize(total)
+                await this.downloadFolderRecursive(folder, transfer, '')
+                if (transfer.isCancelled()) { throw new Error('Download cancelled') }
                 transfer.setStatus('')
                 transfer.setCompleted(true)
             } catch (error) {
@@ -359,7 +377,6 @@ export class SFTPPanelComponent {
             }
         } catch (error) {
             this.notifications.error(`Failed to download folder: ${error.message}`)
-            throw error
         }
     }
 
@@ -367,12 +384,17 @@ export class SFTPPanelComponent {
         let totalSize = 0
         const items = await this.sftp.readdir(folder.fullPath)
         for (const item of items) {
+            if (transfer.isCancelled()) { throw new Error('Download cancelled') }
+            if (item.name === '.' || item.name === '..') { continue }
+            if (item.isSymlink) { throw new Error('Directory contains a symbolic link') }
+            if (!item.name || path.basename(item.name) !== item.name || item.name.includes('\\')) {
+                throw new Error('Invalid remote filename')
+            }
             if (item.isDirectory) {
                 totalSize += await this.calculateFolderSizeAndUpdate(item, transfer)
             } else {
                 totalSize += item.size
             }
-            transfer.setTotalSize(totalSize)
         }
         return totalSize
     }
@@ -385,7 +407,12 @@ export class SFTPPanelComponent {
                 throw new Error('Download cancelled')
             }
 
+            if (item.name === '.' || item.name === '..') { continue }
+
             const itemRelativePath = relativePath ? `${relativePath}/${item.name}` : item.name
+            if (item.isSymlink || !item.name || path.basename(item.name) !== item.name || item.name.includes('\\')) {
+                throw new Error('Invalid or symbolic link entry')
+            }
 
             transfer.setStatus(itemRelativePath)
             if (item.isDirectory) {
@@ -393,7 +420,8 @@ export class SFTPPanelComponent {
                 await this.downloadFolderRecursive(item, transfer, itemRelativePath)
             } else {
                 const fileDownload = await transfer.createFile(itemRelativePath, item.mode, item.size)
-                await this.sftp.download(item.fullPath, fileDownload)
+                const tracked = new FolderFileDownload(fileDownload, transfer)
+                await this.sftp.download(item.fullPath, tracked, () => transfer.isCancelled())
             }
         }
     }

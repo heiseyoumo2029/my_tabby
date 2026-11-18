@@ -9,13 +9,14 @@ class FileTransfer {
     increaseProgress (bytes) { this.bytes += bytes }
     isCancelled () { return this.cancelled }
     cancel () { this.cancelled = true; this.close() }
+    setStatus () {}
 }
 const source = fs.readFileSync('tabby-ssh/src/session/tabTransfer.ts', 'utf8')
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
 const moduleExports = {}
 vm.runInNewContext(js, {
     exports: moduleExports,
-    require: name => name === 'russh' ? { OPEN_READ: 1, OPEN_WRITE: 2, OPEN_CREATE: 8 } : { FileTransfer },
+    require: name => name === 'russh' ? { OPEN_READ: 1, OPEN_WRITE: 2, OPEN_CREATE: 8 } : name === 'path' ? require('path') : { FileTransfer },
 })
 const { TabFileTransfer } = moduleExports
 
@@ -83,6 +84,34 @@ async function main () {
     await t.run(f.source, f.destination, '/to')
     assert.equal(t.isComplete(), true)
     assert.equal(f.files.get('/to').length, 0)
-    console.log('tabTransfer: 5 tests passed')
+
+    const directories = new Set()
+    const copied = new Map()
+    const source = {
+        readdir: async p => p === '/source' ? [
+            { name: 'sub', fullPath: '/source/sub', isDirectory: true },
+            { name: 'a', fullPath: '/source/a', size: 2 },
+        ] : [{ name: 'b', fullPath: '/source/sub/b', size: 2 }],
+        open: async () => {
+            let read = false
+            return { read: async () => read ? Buffer.alloc(0) : (read = true, Buffer.from('ok')), close: async () => {} }
+        },
+    }
+    const destination = {
+        mkdir: async p => { if (directories.has(p)) throw Error('exists'); directories.add(p) },
+        rmdir: async p => directories.delete(p),
+        unlink: async p => copied.delete(p),
+        open: async p => ({ write: async data => copied.set(p, Buffer.from(data)), close: async () => {} }),
+    }
+    const folder = { name: 'source', fullPath: '/source', isDirectory: true, size: 0 }
+    t = new TabFileTransfer(folder)
+    await t.run(source, destination, '/target/source')
+    assert.equal(t.getSize(), 4)
+    assert.equal(t.bytes, 4)
+    assert.equal(copied.get('/target/source/sub/b').toString(), 'ok')
+    assert.equal(t.isComplete(), true)
+    await assert.rejects(new TabFileTransfer(folder).run(source, destination, '/target/source'), /exists/)
+    assert.equal(copied.get('/target/source/a').toString(), 'ok')
+    console.log('tabTransfer: file and directory transfer tests passed')
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

@@ -10,6 +10,7 @@ terminal-toolbar([tab]='this')
         button.btn.btn-sm.btn-link(type='button', (click)='copyConnectionDetail("host")', translate) Copy host
         button.btn.btn-sm.btn-link(type='button', (click)='copyConnectionDetail("port")', translate) Copy port
         button.btn.btn-sm.btn-link(type='button', (click)='copyConnectionDetail("address")', translate) Copy host and port
+        button.btn.btn-sm.btn-link(type='button', (click)='copySSHCurrentPath()', translate) Copy current path
 
     .me-2(
         ngbDropdown,
@@ -52,6 +53,7 @@ sftp-panel.bg-dark(
     [(path)]='sftpPath',
     [(tmuxSocketPath)]='tmuxSocketPath',
     [(tmuxExecutablePath)]='tmuxExecutablePath',
+    [(tmuxSelectedPane)]='tmuxSelectedPane',
     [(sortField)]='sftpSortField',
     [(sortDirection)]='sftpSortDirection',
     *ngIf='sftpPanelVisible && sshSession',

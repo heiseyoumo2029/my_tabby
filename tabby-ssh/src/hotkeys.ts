@@ -17,6 +17,10 @@ export class SSHHotkeyProvider extends HotkeyProvider {
             id: 'open-sftp',
             name: this.translate.instant('Open SFTP panel'),
         },
+        {
+            id: 'copy-ssh-current-path',
+            name: this.translate.instant('Copy SSH or selected tmux pane directory'),
+        },
     ]
 
     constructor (private translate: TranslateService) { super() }

@@ -11,6 +11,13 @@
         (keyup.enter)='confirm()',
         autofocus
     )
+    .d-flex.flex-wrap.gap-2.mt-2
+        button.btn.btn-sm.btn-outline-secondary(type='button', *ngIf='shellPath', (click)='destinationPath = shellPath', translate) Terminal directory
+        button.btn.btn-sm.btn-outline-secondary(type='button', (click)='destinationPath = sftpPath', translate) SFTP directory
+        button.btn.btn-sm.btn-outline-secondary(type='button', (click)='loadTmuxPanes()', [disabled]='loadingPanes', translate) Select tmux pane
+    select.form-select.form-select-sm.mt-2(*ngIf='panes.length', #pane, (change)='selectTmuxPane(pane.value)')
+        option(value='', selected, disabled, translate) Choose a tmux pane
+        option(*ngFor='let item of panes', [value]='item.id') {{item.label}}
     .text-danger.mt-2(*ngIf='error') {{error}}
 .modal-footer
     button.btn.btn-primary(type='button', (click)='confirm()', [disabled]='checking', translate) Transfer

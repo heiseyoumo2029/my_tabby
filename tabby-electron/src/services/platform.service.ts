@@ -480,6 +480,7 @@ class ElectronFileDownload extends FileDownload {
 
 class ElectronDirectoryDownload extends DirectoryDownload {
     private powerSaveBlocker = 0
+    private closed = false
 
     constructor (
         private basePath: string,
@@ -520,6 +521,8 @@ class ElectronDirectoryDownload extends DirectoryDownload {
     }
 
     close (): void {
+        if (this.closed) { return }
+        this.closed = true
         this.electron.powerSaveBlocker.stop(this.powerSaveBlocker)
     }
 }
