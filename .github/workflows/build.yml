@@ -240,18 +240,18 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Publish release packages
+    name: Publish Windows release packages
     runs-on: ubuntu-24.04
     needs:
       - tmux-compat
-      - macos
       - windows
 
     steps:
-      - name: Download packages
+      - name: Download Windows packages
         uses: actions/download-artifact@v4
         with:
           path: release-assets
+          pattern: Windows-*
           merge-multiple: true
 
       - name: Attach packages to GitHub Release
@@ -268,3 +268,24 @@ jobs:
               --title "$GITHUB_REF_NAME" \
               --generate-notes
           fi
+
+  release-macos:
+    name: Attach macOS release packages
+    runs-on: ubuntu-24.04
+    needs:
+      - macos
+      - release
+    steps:
+      - name: Download macOS packages
+        uses: actions/download-artifact@v4
+        with:
+          path: macos-assets
+          pattern: macOS-*
+          merge-multiple: true
+      - name: Attach macOS packages to existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" macos-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
