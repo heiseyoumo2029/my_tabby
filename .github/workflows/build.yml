@@ -112,6 +112,7 @@ jobs:
           node tabby-ssh/test/sshControls.test.cjs
           node tabby-ssh/test/reconnectAll.test.cjs
           node tabby-ssh/test/sftpSort.test.cjs
+          node tabby-terminal/test/oscWorkingDirectory.test.cjs
           node tabby-core/test-transfer-location.cjs
           yarn run build
           node scripts/prepackage-plugins.mjs
@@ -189,6 +190,8 @@ jobs:
           node tabby-ssh/test/reconnectAll.test.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tabby-ssh/test/sftpSort.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tabby-terminal/test/oscWorkingDirectory.test.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tabby-core/test-transfer-location.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

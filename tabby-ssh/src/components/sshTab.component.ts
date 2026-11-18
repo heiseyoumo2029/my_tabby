@@ -252,7 +252,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
                 ? (await this.sshSession.queryTmux(this.tmuxSelectedPane, this.tmuxSocketPath, this.tmuxExecutablePath)).replace(/\n$/, '')
                 : await this.session?.getWorkingDirectory()
             if (!cwd || !cwd.startsWith('/')) {
-                this.notifications.error(this.translate.instant(_('Working directory is not available')))
+                this.notifications.error(this.translate.instant(_('Working directory is not available; enable shell directory reporting or select a tmux pane')))
                 return
             }
             this.platform.setClipboard({ text: cwd })

@@ -2693,3 +2693,9 @@ msgstr "请选择 tmux 窗格"
 
 msgid "Copy SSH or selected tmux pane directory"
 msgstr "复制 SSH 或已选择的 tmux 窗格目录"
+
+msgid "Enter destination directory on the remote host"
+msgstr "手动输入目标主机上的目录路径"
+
+msgid "Working directory is not available; enable shell directory reporting or select a tmux pane"
+msgstr "无法获取工作目录；请启用 shell 目录上报，或选择 tmux 窗格"

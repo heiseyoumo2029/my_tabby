@@ -4,12 +4,13 @@
 .modal-body
     div.mb-2 {{target}}
     div.mb-3 {{fileName}}
-    label.form-label(for='sftp-transfer-destination', translate) Destination directory on the remote host
+    label.form-label(for='sftp-transfer-destination', translate) Enter destination directory on the remote host
     input#sftp-transfer-destination.form-control(
         type='text',
         [(ngModel)]='destinationPath',
         (keyup.enter)='confirm()',
         autofocus
+        placeholder='/home/user/directory'
     )
     .d-flex.flex-wrap.gap-2.mt-2
         button.btn.btn-sm.btn-outline-secondary(type='button', *ngIf='shellPath', (click)='destinationPath = shellPath', translate) Terminal directory

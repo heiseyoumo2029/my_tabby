@@ -29,7 +29,14 @@ export class OSCProcessor extends SessionMiddleware {
             if (prefixIndex === -1) {
                 // No more OSC sequences, pass remaining data
                 if (startIndex < data.length) {
-                    processedData.push(data.subarray(startIndex))
+                    // ESC and ] may arrive in separate network chunks.
+                    const end = data[data.length - 1] === 0x1b ? data.length - 1 : data.length
+                    if (end > startIndex) {
+                        processedData.push(data.subarray(startIndex, end))
+                    }
+                    if (end < data.length) {
+                        this.buffer = data.subarray(end)
+                    }
                 }
                 break
             }
@@ -66,14 +73,29 @@ export class OSCProcessor extends SessionMiddleware {
             if (oscCode === 1337) {
                 const paramString = oscParams.join(';')
                 if (paramString.startsWith('CurrentDir=')) {
-                    let reportedCWD = paramString.split('=', 2)[1]
-                    if (reportedCWD.startsWith('~')) {
+                    let reportedCWD = paramString.substring('CurrentDir='.length)
+                    if (reportedCWD === '~' || reportedCWD.startsWith('~/')) {
                         reportedCWD = os.homedir() + reportedCWD.substring(1)
                     }
                     this.cwdReported.next(reportedCWD)
                 } else {
                     console.debug('Unsupported OSC 1337 parameter:', paramString)
                 }
+            } else if (oscCode === 7) {
+                // OSC 7 is emitted by many shells as file://host/percent-encoded-path.
+                // Keep forwarding it to the frontend, including when it is malformed.
+                try {
+                    const uri = new URL(oscParams.join(';'))
+                    if (uri.protocol === 'file:' && uri.pathname.startsWith('/')) {
+                        const cwd = decodeURIComponent(uri.pathname)
+                        if (!cwd.includes('\0')) {
+                            this.cwdReported.next(cwd)
+                        }
+                    }
+                } catch {
+                    // Ignore invalid or non-URI reports.
+                }
+                processedData.push(data.subarray(prefixIndex, foundSuffix[1] + foundSuffix[0].length))
             } else if (oscCode === 52) {
                 if (oscParams[0] === 'c' || oscParams[0] === '') {
                     const content = Buffer.from(oscParams[1], 'base64')
