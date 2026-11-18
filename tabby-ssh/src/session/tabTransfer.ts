@@ -6,15 +6,15 @@ import { posix as path } from 'path'
 /** A bounded-memory transfer between two already authenticated SFTP sessions. */
 export class TabFileTransfer extends FileTransfer {
     private done = false
-    private totalSize = 0
+    private transferSize = 0
 
     constructor (private file: SFTPFile) {
         super()
-        this.totalSize = file.isDirectory ? 0 : file.size
+        this.transferSize = file.isDirectory ? 0 : file.size
     }
 
     getName (): string { return this.file.name }
-    getSize (): number { return this.totalSize }
+    getSize (): number { return this.transferSize }
     isComplete (): boolean { return this.done }
     close (): void {
         // The asynchronous transfer loop owns and closes both handles.
@@ -49,7 +49,7 @@ export class TabFileTransfer extends FileTransfer {
                     if (file.isDirectory) {
                         await scan(file.fullPath, child)
                     } else {
-                        this.totalSize += file.size
+                        this.transferSize += file.size
                     }
                 }
             }

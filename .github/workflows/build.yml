@@ -179,15 +179,25 @@ jobs:
         shell: pwsh
         run: |
           yarn --network-timeout 1000000
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tabby-ssh/test/tabTransfer.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tabby-ssh/test/tmuxQuery.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tabby-ssh/test/sshControls.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tabby-ssh/test/reconnectAll.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tabby-ssh/test/sftpSort.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tabby-core/test-transfer-location.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           yarn run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/prepackage-plugins.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/build-windows.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         env:
           ARCH: ${{ matrix.arch }}
           RUST_TARGET_TRIPLE: ${{ matrix.rust_target }}
