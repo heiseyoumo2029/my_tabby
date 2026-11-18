@@ -1,7 +1,7 @@
 import { Component, Input, Output, EventEmitter, HostBinding } from '@angular/core'
 import { TranslateService } from '@ngx-translate/core'
 import { ConfigService } from '../services/config.service'
-import { FileDownload, FileTransfer, PlatformService } from '../api/platform'
+import { DirectoryDownload, FileDownload, FileTransfer, PlatformService } from '../api/platform'
 
 /** @hidden */
 @Component({
@@ -34,9 +34,14 @@ export class TransfersMenuComponent {
     }
 
     showTransfer (transfer: FileTransfer): void {
-        const fp = transfer['filePath']
-        if (fp) {
-            this.platform.showItemInFolder(fp)
+        const localPath = transfer.getLocalPath()
+        if (!localPath || transfer.isCancelled()) {
+            return
+        }
+        if (transfer instanceof DirectoryDownload) {
+            this.platform.openPath(localPath)
+        } else if (transfer instanceof FileDownload) {
+            this.platform.showItemInFolder(localPath)
         }
     }
 

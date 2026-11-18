@@ -1,7 +1,7 @@
 .d-flex.align-items-center
     .dropdown-header(translate) File transfers
     button.btn.btn-link.ms-auto((click)='removeAll(); $event.stopPropagation()') !{require('../icons/times.svg')}
-.transfer(*ngFor='let transfer of transfers', (click)='showTransfer(transfer)')
+.transfer(*ngFor='let transfer of transfers', (dblclick)='showTransfer(transfer)')
     .icon(*ngIf='isDownload(transfer)') !{require('../icons/download.svg')}
     .icon(*ngIf='!isDownload(transfer)') !{require('../icons/upload.svg')}
     .main

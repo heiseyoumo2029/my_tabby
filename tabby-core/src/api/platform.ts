@@ -30,6 +30,9 @@ export abstract class FileTransfer {
     abstract getSize (): number
     abstract close (): void
 
+    /** A local download path, when available on the current platform. */
+    getLocalPath (): string|null { return null }
+
     getSpeed (): number {
         return this.lastChunkSpeed
     }

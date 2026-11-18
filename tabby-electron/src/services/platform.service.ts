@@ -456,6 +456,8 @@ class ElectronFileDownload extends FileDownload {
         return path.basename(this.filePath)
     }
 
+    getLocalPath (): string { return this.filePath }
+
     getSize (): number {
         return this.size
     }
@@ -501,6 +503,8 @@ class ElectronDirectoryDownload extends DirectoryDownload {
     getName (): string {
         return this.name
     }
+
+    getLocalPath (): string { return this.basePath }
 
     getSize (): number {
         return this.getTotalSize()
