@@ -396,7 +396,12 @@ export class SSHSession {
                 subscriptions.push(channel.eof$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
                 subscriptions.push(channel.closed$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
             })
-            const command = shellQuote.quote(['python3', '-c', WORKING_DIRECTORY_PROBE, executable, socketPath])
+            // shell-quote 1.x escapes exclamation marks even inside quoted strings,
+            // which changes multiline Python source on POSIX shells. Base64 keeps the
+            // source byte-for-byte intact; executable/socket remain separate argv.
+            const encoded = Buffer.from(WORKING_DIRECTORY_PROBE, 'utf8').toString('base64')
+            const code = `import base64;exec(base64.b64decode('${encoded}'))`
+            const command = shellQuote.quote(['python3', '-c', code, executable, socketPath])
             const result = (await Promise.all([channel.requestExec(command), output]))[1]
             if (!result) {
                 if (errors.length) { throw new Error(Buffer.concat(errors).toString('utf8').trim()) }
