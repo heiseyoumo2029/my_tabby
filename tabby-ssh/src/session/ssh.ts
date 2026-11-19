@@ -381,6 +381,7 @@ export class SSHSession {
         }
         const channel = await this.ssh.activateChannel(await this.ssh.openSessionChannel())
         const chunks: Buffer[] = []
+        const errors: Buffer[] = []
         let size = 0
         let timer: ReturnType<typeof setTimeout>|undefined = undefined
         const subscriptions: { unsubscribe: () => void }[] = []
@@ -391,15 +392,18 @@ export class SSHSession {
                     size += data.length
                     if (size > 65536) { reject(new Error('Working directory probe output too large')) } else { chunks.push(Buffer.from(data)) }
                 }))
+                subscriptions.push(channel.extendedData$.subscribe(([, data]) => { errors.push(Buffer.from(data)) }))
                 subscriptions.push(channel.eof$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
                 subscriptions.push(channel.closed$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
             })
             const command = shellQuote.quote(['python3', '-c', WORKING_DIRECTORY_PROBE, executable, socketPath])
             const result = (await Promise.all([channel.requestExec(command), output]))[1]
-            if (!result) { return null }
+            if (!result) {
+                if (errors.length) { throw new Error(Buffer.concat(errors).toString('utf8').trim()) }
+                return null
+            }
             const parsed = JSON.parse(result)
             if (typeof parsed.error === 'string') {
-                if (parsed.error === 'Linux /proc is unavailable' || parsed.error === 'SSH connection process is unavailable') { return null }
                 throw new Error(parsed.error)
             }
             return typeof parsed.path === 'string' && parsed.path.startsWith('/') && !parsed.path.includes('\0') ? parsed.path : null

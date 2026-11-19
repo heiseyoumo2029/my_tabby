@@ -71,12 +71,13 @@ async function main () {
         for (let i = 0; i < 50 && !shellOutput.includes('TABBY_READY_123'); i++) await new Promise(resolve => setTimeout(resolve, 100))
         assert.ok(shellOutput.includes('TABBY_READY_123'), 'interactive shell did not start')
         let shellPath = null
+        let probeError = null
         for (let i = 0; i < 30; i++) {
-            try { shellPath = await query.queryCurrentWorkingDirectory(socket, process.env.TMUX_BINARY) } catch {}
+            try { shellPath = await query.queryCurrentWorkingDirectory(socket, process.env.TMUX_BINARY) } catch (error) { probeError = error }
             if (shellPath === first) break
             await new Promise(resolve => setTimeout(resolve, 100))
         }
-        assert.equal(shellPath, first)
+        assert.equal(shellPath, first, `automatic shell detection failed: ${probeError?.message}`)
         await shell.write(Buffer.from(`exec ${shellQuote.quote([process.env.TMUX_BINARY, '-S', socket, 'attach-session', '-t', 'tabby-test'])}\n`))
         let currentPath = null
         for (let i = 0; i < 30; i++) {
