@@ -2705,3 +2705,6 @@ msgstr "自动识别目录"
 
 msgid "Manual directory"
 msgstr "手动选择目录"
+
+msgid "Could not detect working directory"
+msgstr "无法自动检测工作目录"

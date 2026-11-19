@@ -250,7 +250,12 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
 
     resolveCurrentWorkingDirectory = async (): Promise<string|null> => {
         if (this.directoryMode === 'manual') {
-            if (this.manualWorkingDirectory.startsWith('/')) { return this.manualWorkingDirectory }
+            if (this.manualWorkingDirectory) {
+                if (!this.manualWorkingDirectory.startsWith('/') || this.manualWorkingDirectory.includes('\0')) {
+                    throw new Error(this.translate.instant(_('Enter an absolute destination directory')))
+                }
+                return this.manualWorkingDirectory
+            }
             if (this.tmuxSelectedPane && this.sshSession) {
                 const cwd = (await this.sshSession.queryTmux(this.tmuxSelectedPane, this.tmuxSocketPath, this.tmuxExecutablePath)).replace(/\n$/, '')
                 return cwd.startsWith('/') ? cwd : null
@@ -272,7 +277,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
             this.platform.setClipboard({ text: cwd })
             this.notifications.notice(this.translate.instant(_('Copied')))
         } catch (error) {
-            this.notifications.error(`${this.translate.instant(_('Could not get tmux pane directory'))}: ${error.message}`)
+            this.notifications.error(`${this.translate.instant(_('Could not detect working directory'))}: ${error.message}`)
         }
     }
 

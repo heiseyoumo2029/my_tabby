@@ -401,7 +401,7 @@ export class SSHSession {
             // source byte-for-byte intact; executable/socket remain separate argv.
             const encoded = Buffer.from(WORKING_DIRECTORY_PROBE, 'utf8').toString('base64')
             const code = `import base64;exec(base64.b64decode('${encoded}'))`
-            const command = shellQuote.quote(['python3', '-c', code, executable, socketPath])
+            const command = `command -v python3 >/dev/null 2>&1 || exit 0; ${shellQuote.quote(['python3', '-c', code, executable, socketPath])}`
             const result = (await Promise.all([channel.requestExec(command), output]))[1]
             if (!result) {
                 if (errors.length) { throw new Error(Buffer.concat(errors).toString('utf8').trim()) }
@@ -409,6 +409,7 @@ export class SSHSession {
             }
             const parsed = JSON.parse(result)
             if (typeof parsed.error === 'string') {
+                if (parsed.error === 'Linux /proc is unavailable' || parsed.error === 'SSH connection process is unavailable') { return null }
                 throw new Error(parsed.error)
             }
             return typeof parsed.path === 'string' && parsed.path.startsWith('/') && !parsed.path.includes('\0') ? parsed.path : null
