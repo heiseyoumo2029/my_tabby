@@ -17,6 +17,7 @@ import { ForwardedPort } from './forwards'
 import { X11Socket } from './x11'
 import { supportedAlgorithms } from '../algorithms'
 import * as russh from 'russh'
+import { WORKING_DIRECTORY_PROBE } from './workingDirectoryProbe'
 
 const WINDOWS_OPENSSH_AGENT_PIPE = '\\\\.\\pipe\\openssh-ssh-agent'
 
@@ -369,6 +370,44 @@ export class SSHSession {
             this.sftp = await this.ssh.activateSFTP(await this.ssh.openSessionChannel())
         }
         return new SFTPSession(this.sftp, this.injector)
+    }
+
+    /** Resolve only an unambiguous foreground shell or tmux client on Linux. */
+    async queryCurrentWorkingDirectory (socketPath = '', executable = ''): Promise<string|null> {
+        if (!(this.ssh instanceof russh.AuthenticatedSSHClient)) { return null }
+        if ((socketPath && (!socketPath.startsWith('/') || socketPath.includes('\0'))) ||
+            (executable && (!executable.startsWith('/') || executable.includes('\0')))) {
+            throw new Error('tmux executable and socket paths must be absolute')
+        }
+        const channel = await this.ssh.activateChannel(await this.ssh.openSessionChannel())
+        const chunks: Buffer[] = []
+        let size = 0
+        let timer: ReturnType<typeof setTimeout>|undefined = undefined
+        const subscriptions: { unsubscribe: () => void }[] = []
+        try {
+            const output = new Promise<string>((resolve, reject) => {
+                timer = setTimeout(() => reject(new Error('Working directory detection timed out')), 5000)
+                subscriptions.push(channel.data$.subscribe(data => {
+                    size += data.length
+                    if (size > 65536) { reject(new Error('Working directory probe output too large')) } else { chunks.push(Buffer.from(data)) }
+                }))
+                subscriptions.push(channel.eof$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
+                subscriptions.push(channel.closed$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
+            })
+            const command = shellQuote.quote(['python3', '-c', WORKING_DIRECTORY_PROBE, executable, socketPath])
+            const result = (await Promise.all([channel.requestExec(command), output]))[1]
+            if (!result) { return null }
+            const parsed = JSON.parse(result)
+            if (typeof parsed.error === 'string') {
+                if (parsed.error === 'Linux /proc is unavailable' || parsed.error === 'SSH connection process is unavailable') { return null }
+                throw new Error(parsed.error)
+            }
+            return typeof parsed.path === 'string' && parsed.path.startsWith('/') && !parsed.path.includes('\0') ? parsed.path : null
+        } finally {
+            clearTimeout(timer)
+            subscriptions.forEach(subscription => subscription.unsubscribe())
+            await channel.close().catch(() => null)
+        }
     }
 
     /** Run a non-interactive tmux query without writing to the user's shell. */

@@ -12,6 +12,18 @@ terminal-toolbar([tab]='this')
         button.btn.btn-sm.btn-link(type='button', (click)='copyConnectionDetail("address")', translate) Copy host and port
         button.btn.btn-sm.btn-link(type='button', (click)='copySSHCurrentPath()', translate) Copy current path
 
+    .me-2.d-flex.align-items-center((click)='$event.stopPropagation()')
+        select.form-select.form-select-sm([(ngModel)]='directoryMode', aria-label='Directory detection mode')
+            option(value='auto', translate) Automatic directory
+            option(value='manual', translate) Manual directory
+        input.form-control.form-control-sm.ms-1(
+            *ngIf='directoryMode === "manual"',
+            type='text',
+            [(ngModel)]='manualWorkingDirectory',
+            placeholder='/path',
+            aria-label='Manual working directory'
+        )
+
     .me-2(
         ngbDropdown,
         container='body',
@@ -54,6 +66,7 @@ sftp-panel.bg-dark(
     [(tmuxSocketPath)]='tmuxSocketPath',
     [(tmuxExecutablePath)]='tmuxExecutablePath',
     [(tmuxSelectedPane)]='tmuxSelectedPane',
+    [resolveWorkingDirectory]='resolveCurrentWorkingDirectory',
     [(sortField)]='sftpSortField',
     [(sortDirection)]='sftpSortDirection',
     *ngIf='sftpPanelVisible && sshSession',

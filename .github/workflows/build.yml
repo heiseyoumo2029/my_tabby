@@ -67,6 +67,7 @@ jobs:
           sleep 2
           if ! kill -0 "$sshd_pid" 2>/dev/null; then cat "$RUNNER_TEMP/test-ssh/log"; exit 1; fi
           node tabby-ssh/test/tmuxVersion.integration.cjs
+          node tabby-ssh/test/workingDirectoryMode.test.cjs
         env:
           EXPECT_TMUX_VERSION: ${{ matrix.version }}
           TMUX_TMPDIR: ${{ runner.temp }}/tmux-env
@@ -112,6 +113,7 @@ jobs:
           node tabby-ssh/test/sshControls.test.cjs
           node tabby-ssh/test/reconnectAll.test.cjs
           node tabby-ssh/test/sftpSort.test.cjs
+          node tabby-ssh/test/workingDirectoryMode.test.cjs
           node tabby-terminal/test/oscWorkingDirectory.test.cjs
           node tabby-core/test-transfer-location.cjs
           yarn run build
@@ -190,6 +192,8 @@ jobs:
           node tabby-ssh/test/reconnectAll.test.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tabby-ssh/test/sftpSort.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tabby-ssh/test/workingDirectoryMode.test.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tabby-terminal/test/oscWorkingDirectory.test.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

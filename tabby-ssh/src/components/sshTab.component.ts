@@ -32,6 +32,8 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     tmuxSocketPath = ''
     tmuxExecutablePath = ''
     tmuxSelectedPane = ''
+    directoryMode: 'auto'|'manual' = 'auto'
+    manualWorkingDirectory = ''
     sftpSortField: SFTPSortField = 'name'
     sftpSortDirection: SFTPSortDirection = 'ascending'
     enableToolbar = true
@@ -246,11 +248,23 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         this.platform.setClipboard({ text })
     }
 
+    resolveCurrentWorkingDirectory = async (): Promise<string|null> => {
+        if (this.directoryMode === 'manual') {
+            if (this.manualWorkingDirectory.startsWith('/')) { return this.manualWorkingDirectory }
+            if (this.tmuxSelectedPane && this.sshSession) {
+                const cwd = (await this.sshSession.queryTmux(this.tmuxSelectedPane, this.tmuxSocketPath, this.tmuxExecutablePath)).replace(/\n$/, '')
+                return cwd.startsWith('/') ? cwd : null
+            }
+            return null
+        }
+        const cwd = await this.sshSession?.queryCurrentWorkingDirectory(this.tmuxSocketPath, this.tmuxExecutablePath)
+        if (cwd) { return cwd }
+        return await this.session?.getWorkingDirectory() ?? null
+    }
+
     async copySSHCurrentPath (): Promise<void> {
         try {
-            const cwd = this.tmuxSelectedPane && this.sshSession
-                ? (await this.sshSession.queryTmux(this.tmuxSelectedPane, this.tmuxSocketPath, this.tmuxExecutablePath)).replace(/\n$/, '')
-                : await this.session?.getWorkingDirectory()
+            const cwd = await this.resolveCurrentWorkingDirectory()
             if (!cwd || !cwd.startsWith('/')) {
                 this.notifications.error(this.translate.instant(_('Working directory is not available; enable shell directory reporting or select a tmux pane')))
                 return
@@ -337,7 +351,11 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     }
 
     async openSFTP (): Promise<void> {
-        this.sftpPath = await this.session?.getWorkingDirectory() ?? this.sftpPath
+        try {
+            this.sftpPath = await this.resolveCurrentWorkingDirectory() ?? this.sftpPath
+        } catch (error) {
+            this.logger.warn('Could not detect working directory', error)
+        }
         setTimeout(() => {
             this.sftpPanelVisible = true
         }, 100)

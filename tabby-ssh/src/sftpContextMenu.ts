@@ -96,13 +96,14 @@ export class CommonSFTPContextMenu extends SFTPContextMenuItemProvider {
             const sshSession = tab.sshSession
             const modal = this.ngbModal.open(SFTPTransferDestinationModalComponent)
             modal.componentInstance.session = sshSession
-            const cwd = await tab.session.getWorkingDirectory()
+            let cwd: string|null = null
+            try { cwd = await tab.resolveCurrentWorkingDirectory() } catch { /* Manual selection remains available. */ }
             modal.componentInstance.destinationPath = cwd?.startsWith('/') ? cwd : tab.sftpPath
             modal.componentInstance.shellPath = cwd?.startsWith('/') ? cwd : ''
             modal.componentInstance.sftpPath = tab.sftpPath
             modal.componentInstance.tmuxSocketPath = tab.tmuxSocketPath
             modal.componentInstance.tmuxExecutablePath = tab.tmuxExecutablePath
-            if (tab.tmuxSelectedPane) {
+            if (tab.directoryMode === 'manual' && !tab.manualWorkingDirectory && tab.tmuxSelectedPane) {
                 try {
                     const tmuxPath = (await sshSession.queryTmux(tab.tmuxSelectedPane, tab.tmuxSocketPath, tab.tmuxExecutablePath)).replace(/\n$/, '')
                     if (tmuxPath.startsWith('/')) { modal.componentInstance.destinationPath = tmuxPath }

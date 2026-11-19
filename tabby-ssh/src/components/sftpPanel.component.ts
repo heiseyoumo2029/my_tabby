@@ -34,6 +34,7 @@ class FolderFileDownload extends FileDownload {
 export class SFTPPanelComponent {
     @Input() session: SSHSession
     @Input() shellSession: SSHShellSession|null = null
+    @Input() resolveWorkingDirectory?: () => Promise<string|null>
     @Output() closed = new EventEmitter<void>()
     sftp: SFTPSession
     fileList: SFTPFile[]|null = null
@@ -127,7 +128,13 @@ export class SFTPPanelComponent {
     }
 
     async navigateToShellDirectory (): Promise<void> {
-        const cwd = await this.shellSession?.getWorkingDirectory()
+        let cwd: string|null|undefined = null
+        try {
+            cwd = this.resolveWorkingDirectory ? await this.resolveWorkingDirectory() : await this.shellSession?.getWorkingDirectory()
+        } catch (error) {
+            this.notifications.error(error.message)
+            return
+        }
         if (!cwd) {
             this.notifications.error(this.translate.instant('Working directory is not available'))
             return
