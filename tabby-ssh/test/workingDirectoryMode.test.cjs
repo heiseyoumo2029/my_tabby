@@ -15,13 +15,22 @@ async function main () {
     tab.directoryMode = 'auto'
     tab.tmuxSocketPath = '/tmp/socket'
     tab.tmuxExecutablePath = '/usr/bin/tmux'
-    tab.session = { getWorkingDirectory: async () => '/reported' }
-    tab.sshSession = { queryCurrentWorkingDirectory: async () => '/auto', queryTmux: async () => '/pane\n' }
+    tab.session = { open: true, shell: {}, getWorkingDirectory: async () => '/reported' }
+    tab.sshSession = { queryCurrentWorkingDirectory: async (socket, executable, shell) => {
+        assert.equal(shell, tab.session.shell)
+        return '/auto'
+    }, queryTmux: async () => '/pane\n' }
     assert.equal(await tab.resolveCurrentWorkingDirectory(), '/auto')
     tab.sshSession.queryCurrentWorkingDirectory = async () => null
     assert.equal(await tab.resolveCurrentWorkingDirectory(), '/reported')
     tab.sshSession.queryCurrentWorkingDirectory = async () => { throw Error('ambiguous') }
     await assert.rejects(tab.resolveCurrentWorkingDirectory(), /ambiguous/)
+    tab.sshSession.queryCurrentWorkingDirectory = async () => { throw Object.assign(Error('no PTY'), { allowReport: true }) }
+    assert.equal(await tab.resolveCurrentWorkingDirectory(), '/reported')
+    tab.session.getWorkingDirectory = async () => null
+    await assert.rejects(tab.resolveCurrentWorkingDirectory(), /no PTY/)
+    tab.session.open = false
+    assert.equal(await tab.resolveCurrentWorkingDirectory(), null)
     tab.directoryMode = 'manual'
     tab.manualWorkingDirectory = '/manual path'
     tab.tmuxSelectedPane = '%5'

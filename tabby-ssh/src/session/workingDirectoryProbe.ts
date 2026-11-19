@@ -1,83 +1,95 @@
-/** Read-only Linux probe run in a separate exec channel of the same SSH connection. */
+/** Read-only Linux probe, run without a PTY on the interactive SSH transport. */
 export const WORKING_DIRECTORY_PROBE = String.raw`
 import os, sys, json, subprocess
 
-def fail(reason):
-    print(json.dumps({'error': reason}))
+def result(**values):
+    print('TABBY_CWD:' + json.dumps(values))
     sys.exit(0)
 
 def stat(pid):
     try:
-        text = open('/proc/%s/stat' % pid).read()
-        name = text[text.index('(')+1:text.rindex(')')]
-        fields = text[text.rindex(')')+2:].split()
-        return {'pid': int(pid), 'name': name, 'ppid': int(fields[1]), 'pgrp': int(fields[2]), 'tpgid': int(fields[5])}
+        with open('/proc/%s/stat' % pid, 'rb') as file:
+            text = file.read()
+        end = text.rindex(b')')
+        fields = text[end+2:].split()
+        return dict(pid=int(pid), name=os.fsdecode(text[text.index(b'(')+1:end]),
+                    ppid=int(fields[1]), pgrp=int(fields[2]), sid=int(fields[3]),
+                    tty=int(fields[4]), fg=int(fields[5]), start=int(fields[19]))
     except (OSError, ValueError, IndexError):
         return None
 
 if not os.path.isdir('/proc/self'):
-    fail('Linux /proc is unavailable')
+    result(error='Linux /proc is unavailable', allowReport=True)
 ancestor = os.getppid()
-root = None
 while ancestor > 1:
     current = stat(ancestor)
     if not current: break
-    if current['name'].startswith('sshd'):
-        root = ancestor
-        break
+    if current['name'].startswith('sshd') and not current['tty']: break
     ancestor = current['ppid']
-if root is None:
-    fail('SSH connection process is unavailable')
+else:
+    current = None
+if not current or not current['name'].startswith('sshd'):
+    result(error='SSH connection process is unavailable', allowReport=True)
+
 processes = {}
 for name in os.listdir('/proc'):
     if name.isdigit():
         p = stat(name)
         if p: processes[p['pid']] = p
 
-def within(pid):
-    seen = set()
-    while pid in processes and pid not in seen:
-        if pid == root: return True
-        seen.add(pid)
-        pid = processes[pid]['ppid']
-    return False
+# Only outer SSH login sessions, not PTYs created inside tmux, sudo or screen.
+def outer_session(p):
+    if p['pid'] != p['sid'] or not p['tty']: return False
+    parent = p['ppid']
+    while parent in processes and parent != ancestor:
+        proc = processes[parent]
+        if proc['tty'] or parent == proc['ppid']: return False
+        parent = proc['ppid']
+    return parent == ancestor
 
-terminals = {}
-for p in processes.values():
-    if not within(p['pid']): continue
-    try:
-        tty = os.readlink('/proc/%s/fd/0' % p['pid'])
-    except OSError:
-        continue
-    if tty.startswith('/dev/pts/') and p['tpgid'] > 0 and p['pgrp'] == p['tpgid']:
-        terminals.setdefault(tty, []).append(p)
-if len(terminals) != 1:
-    fail('SSH terminal is unavailable or ambiguous')
-tty, foreground = next(iter(terminals.items()))
-leaders = [p for p in foreground if p['pid'] == p['pgrp']]
-if len(leaders) != 1:
-    fail('Foreground process is unavailable or ambiguous')
-p = leaders[0]
+sessions = {'%s:%s:%s' % (p['sid'], p['start'], p['tty']): p
+            for p in processes.values() if outer_session(p)}
+op, key, executable, socket = sys.argv[1:5]
+if op == 'list':
+    result(sessions=list(sessions))
+if key:
+    if key not in sessions:
+        result(error='The terminal bound to this SSH tab is no longer available', allowReport=True)
+    session = sessions[key]
+elif len(sessions) == 1:
+    session = next(iter(sessions.values()))
+else:
+    result(error='Expected one SSH login terminal; found %d' % len(sessions), allowReport=True)
+
+# stat.tty_nr identifies the controlling terminal even when stdin is redirected.
+p = processes.get(session['fg'])
+if not p or p['sid'] != session['sid'] or p['tty'] != session['tty']:
+    result(error='Foreground process of this SSH terminal is unavailable', allowReport=True)
 if p['name'].startswith('tmux'):
-    executable, socket = sys.argv[1:3]
     command = [executable or 'tmux'] + (['-S', socket] if socket else [])
     try:
-        clients = subprocess.check_output(command + ['list-clients', '-F', '#{client_tty}'], stderr=subprocess.STDOUT, timeout=3).decode('utf-8').splitlines()
-        if clients.count(tty) != 1: fail('Current tmux client was not found')
-        output = subprocess.check_output(command + ['display-message', '-p', '-c', tty, '#{pane_id}\t#{pane_current_path}'], stderr=subprocess.STDOUT, timeout=3).decode('utf-8').rstrip('\n')
+        # Match the actual client rather than the server's most recent session.
+        clients = subprocess.check_output(command + ['list-clients', '-F', '#{client_pid} #{client_tty} #{session_id}'], stderr=subprocess.PIPE, timeout=3).decode().splitlines()
+        matches = [line.split(' ') for line in clients if line.startswith(str(p['pid']) + ' ')]
+        if len(matches) != 1:
+            result(error='Current tmux client was not found on the configured socket')
+        _, tty, target = matches[0]
+        output = subprocess.check_output(command + ['display-message', '-p', '-c', tty, '-t', target + ':', '#{pane_id}\t#{pane_current_path}'], stderr=subprocess.PIPE, timeout=3).decode().rstrip('\n')
         pane, cwd = output.split('\t', 1)
-        if not pane.startswith('%') or not pane[1:].isdigit(): fail('Invalid tmux pane')
-        if not cwd.startswith('/'): fail('Invalid tmux directory')
-        print(json.dumps({'path': cwd, 'kind': 'tmux', 'pane': pane}))
-    except (OSError, subprocess.SubprocessError, ValueError):
-        fail('Could not inspect current tmux client')
-elif p['name'].lstrip('-') in ('bash', 'zsh', 'sh', 'dash', 'ksh', 'fish', 'ash'):
+        if not pane.startswith('%') or not pane[1:].isdigit() or not cwd.startswith('/'):
+            result(error='Invalid tmux pane or directory')
+        result(path=cwd)
+    except subprocess.CalledProcessError as e:
+        result(error='tmux: ' + e.stderr.decode(errors='replace').strip()[:256])
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        result(error='Could not inspect current tmux client: ' + str(e))
+elif p['name'].lstrip('-') in ('bash', 'zsh', 'sh', 'dash', 'ksh', 'ksh93', 'mksh', 'fish', 'ash', 'csh', 'tcsh'):
     try:
         cwd = os.readlink('/proc/%s/cwd' % p['pid'])
-        if not cwd.startswith('/') or cwd.endswith(' (deleted)'): fail('Shell directory is unavailable')
-        print(json.dumps({'path': cwd, 'kind': 'shell'}))
+        if not cwd.startswith('/') or cwd.endswith(' (deleted)'): result(error='Shell directory is unavailable')
+        result(path=cwd)
     except OSError:
-        fail('Shell directory is not accessible')
+        result(error='Shell directory is not accessible', allowReport=True)
 else:
-    fail('Foreground program is not a shell or tmux client')
+    result(error='Foreground program is not a shell or tmux client')
 `

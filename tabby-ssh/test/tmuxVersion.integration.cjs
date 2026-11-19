@@ -12,13 +12,14 @@ const vm = require('node:vm')
 const source = fs.readFileSync('tabby-ssh/src/session/ssh.ts', 'utf8')
 const tree = ts.createSourceFile('ssh.ts', source, ts.ScriptTarget.Latest, true)
 const type = tree.statements.find(x => ts.isClassDeclaration(x) && x.name.text === 'SSHSession')
-const query = type.members.find(x => x.name && x.name.getText(tree) === 'queryTmux')
-const current = type.members.find(x => x.name && x.name.getText(tree) === 'queryCurrentWorkingDirectory')
+const methods = ['queryTmux', 'queryCurrentWorkingDirectory', 'runDirectoryProbe', 'openShellChannel',
+    'startShellChannel', 'listLoginTerminals', 'bindLoginTerminal', 'shellStartQueue', 'shellIdentities', 'shellsStarted']
+const members = methods.map(name => type.members.find(x => x.name?.getText(tree) === name).getText(tree)).join('\n')
 const probeSource = fs.readFileSync('tabby-ssh/src/session/workingDirectoryProbe.ts', 'utf8')
 const probeJS = ts.transpileModule(probeSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
 const probeExports = {}
 vm.runInNewContext(probeJS, { exports: probeExports })
-const js = ts.transpileModule(`class QueryTest { ${query.getText(tree)} ${current.getText(tree)} }\nexports.QueryTest = QueryTest`, {
+const js = ts.transpileModule(`class QueryTest { ${members} }\nexports.QueryTest = QueryTest`, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText
 
@@ -38,6 +39,7 @@ async function main () {
     const tmux = args => execFileSync('tmux', args, { encoding: 'utf8', env: process.env })
     let connection = null
     let shell = null
+    let sibling = null
     try {
         tmux(['new-session', '-d', '-s', 'tabby-test', '-c', first, 'sleep 120'])
         tmux(['split-window', '-d', '-t', 'tabby-test', '-c', second, 'sleep 120'])
@@ -62,35 +64,42 @@ async function main () {
         const socket = tmux(['display-message', '-p', '#{socket_path}']).trim()
         assert.equal((await query.queryTmux(undefined, socket)).trim().split('\n').length, 2)
         assert.equal((await query.queryTmux(panes[0], socket, process.env.TMUX_BINARY)).trim(), dirs[0])
-        shell = await connection.activateChannel(await connection.openSessionChannel())
-        let shellOutput = ''
-        shell.data$.subscribe(data => { shellOutput += Buffer.from(data).toString() })
-        await shell.requestPTY('xterm', { columns: 80, rows: 24, pixWidth: 0, pixHeight: 0 })
-        await shell.requestShell()
-        await shell.write(Buffer.from(`cd ${shellQuote.quote([first])}; echo TABBY_READY_123\n`))
-        for (let i = 0; i < 50 && !shellOutput.includes('TABBY_READY_123'); i++) await new Promise(resolve => setTimeout(resolve, 100))
-        assert.ok(shellOutput.includes('TABBY_READY_123'), 'interactive shell did not start')
-        let shellPath = null
-        let probeError = null
-        for (let i = 0; i < 30; i++) {
-            try { shellPath = await query.queryCurrentWorkingDirectory(socket, process.env.TMUX_BINARY) } catch (error) { probeError = error }
-            if (shellPath === first) break
-            await new Promise(resolve => setTimeout(resolve, 100))
+        query.profile = { options: {} }
+        query.logger = console
+        ;[shell, sibling] = await Promise.all([query.openShellChannel({}), query.openShellChannel({})])
+        // Subscribe before writing so terminal output is consumed as in the UI.
+        shell.data$.subscribe(() => {})
+        sibling.data$.subscribe(() => {})
+        const current = (ch, socketPath = '', executable = '') => query.queryCurrentWorkingDirectory(socketPath, executable, ch)
+        async function waitForPath (ch, expected, label) {
+            let last
+            for (let i = 0; i < 30; i++) {
+                try { last = await current(ch) } catch (error) { last = error.message }
+                if (last === expected) return
+                await new Promise(resolve => setTimeout(resolve, 100))
+            }
+            assert.fail(`${label}: expected ${expected}, got ${last}`)
         }
-        assert.equal(shellPath, first, `automatic shell detection failed: ${probeError?.message}`)
-        await shell.write(Buffer.from(`exec ${shellQuote.quote([process.env.TMUX_BINARY, '-S', socket, 'attach-session', '-t', 'tabby-test'])}\n`))
-        let currentPath = null
-        for (let i = 0; i < 30; i++) {
-            try { currentPath = await query.queryCurrentWorkingDirectory(socket, process.env.TMUX_BINARY) } catch {}
-            if (dirs.includes(currentPath)) break
-            await new Promise(resolve => setTimeout(resolve, 100))
-        }
-        assert.ok(dirs.includes(currentPath), `could not detect active tmux pane: ${currentPath}`)
-        const other = currentPath === dirs[0] ? 1 : 0
+        await shell.write(Buffer.from(`cd ${shellQuote.quote([first])}\n`))
+        await sibling.write(Buffer.from(`cd ${shellQuote.quote([second])}\n`))
+        await waitForPath(shell, first, 'first multiplexed tab')
+        await waitForPath(sibling, second, 'second multiplexed tab')
+        // Attach normally (not "exec tmux") and deliberately leave both Tabby
+        // override fields empty. The remote default server is isolated by CI.
+        const active = dirs.indexOf(second)
+        const other = 1 - active
+        tmux(['select-pane', '-t', panes[active]])
+        await shell.write(Buffer.from(`${shellQuote.quote([process.env.TMUX_BINARY, 'attach-session', '-t', 'tabby-test'])}\n`))
+        await waitForPath(shell, second, 'tmux defaults')
         tmux(['select-pane', '-t', panes[other]])
-        assert.equal(await query.queryCurrentWorkingDirectory(socket, process.env.TMUX_BINARY), dirs[other])
+        assert.equal(await current(shell), dirs[other])
+        assert.equal(await current(shell, socket), dirs[other])
+        assert.equal(await current(shell, '', process.env.TMUX_BINARY), dirs[other])
+        assert.equal(await current(shell, socket, process.env.TMUX_BINARY), dirs[other])
+        assert.equal(await current(sibling), second)
         console.log(`${version}: discovered ${panes.length} panes and their working directories over SSH`)
     } finally {
+        if (sibling) await sibling.close().catch(() => null)
         if (shell) await shell.close().catch(() => null)
         if (connection instanceof russh.AuthenticatedSSHClient) await connection.disconnect()
         try { tmux(['kill-server']) } catch {}

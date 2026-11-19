@@ -111,6 +111,9 @@ export class SSHSession {
     open = false
 
     private logger: Logger
+    private shellStartQueue = Promise.resolve()
+    private shellsStarted = 0
+    private shellIdentities = new WeakMap<russh.Channel, Promise<string|null>>()
     private refCount = 0
     private allAuthMethods: AuthMethod[] = []
     private serviceMessage = new Subject<string>()
@@ -372,51 +375,78 @@ export class SSHSession {
         return new SFTPSession(this.sftp, this.injector)
     }
 
-    /** Resolve only an unambiguous foreground shell or tmux client on Linux. */
-    async queryCurrentWorkingDirectory (socketPath = '', executable = ''): Promise<string|null> {
+    async queryCurrentWorkingDirectory (socketPath = '', executable = '', shell?: russh.Channel): Promise<string|null> {
         if (!(this.ssh instanceof russh.AuthenticatedSSHClient)) { return null }
         if ((socketPath && (!socketPath.startsWith('/') || socketPath.includes('\0'))) ||
             (executable && (!executable.startsWith('/') || executable.includes('\0')))) {
             throw new Error('tmux executable and socket paths must be absolute')
         }
-        const channel = await this.ssh.activateChannel(await this.ssh.openSessionChannel())
+        const key = shell ? await this.shellIdentities.get(shell) : null
+        if (shell && !key && this.shellsStarted > 1) {
+            throw Object.assign(new Error('Could not bind this tab to a login terminal on the shared SSH connection'), { allowReport: true })
+        }
+        const parsed = await this.runDirectoryProbe('path', key ?? '', executable, socketPath)
+        return typeof parsed.path === 'string' && parsed.path.startsWith('/') && !parsed.path.includes('\0') ? parsed.path : null
+    }
+
+    private async runDirectoryProbe (op: 'list'|'path', key = '', executable = '', socketPath = ''): Promise<{ path?: string, sessions?: string[] }> {
+        if (!(this.ssh instanceof russh.AuthenticatedSSHClient)) { throw new Error('SSH is not connected') }
+        const ssh = this.ssh
+        let channel: russh.Channel|undefined
+        let finished = false
         const chunks: Buffer[] = []
         const errors: Buffer[] = []
         let size = 0
         let timer: ReturnType<typeof setTimeout>|undefined = undefined
         const subscriptions: { unsubscribe: () => void }[] = []
-        try {
+        const read = async () => {
+            const ch = await ssh.activateChannel(await ssh.openSessionChannel())
+            if (finished) {
+                void ch.close().catch(() => null)
+                throw new Error('Working directory probe expired')
+            }
+            channel = ch
             const output = new Promise<string>((resolve, reject) => {
-                timer = setTimeout(() => reject(new Error('Working directory detection timed out')), 5000)
-                subscriptions.push(channel.data$.subscribe(data => {
+                const collect = (destination: Buffer[], data: Uint8Array) => {
                     size += data.length
-                    if (size > 65536) { reject(new Error('Working directory probe output too large')) } else { chunks.push(Buffer.from(data)) }
-                }))
-                subscriptions.push(channel.extendedData$.subscribe(([, data]) => { errors.push(Buffer.from(data)) }))
-                subscriptions.push(channel.eof$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
-                subscriptions.push(channel.closed$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
+                    if (size > 65536) { reject(new Error('Working directory probe output too large')) } else { destination.push(Buffer.from(data)) }
+                }
+                subscriptions.push(ch.data$.subscribe(data => collect(chunks, data)))
+                subscriptions.push(ch.extendedData$.subscribe(([, data]) => collect(errors, data)))
+                subscriptions.push(ch.eof$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
+                subscriptions.push(ch.closed$.subscribe(() => resolve(Buffer.concat(chunks).toString('utf8'))))
             })
-            // shell-quote 1.x escapes exclamation marks even inside quoted strings,
-            // which changes multiline Python source on POSIX shells. Base64 keeps the
-            // source byte-for-byte intact; executable/socket remain separate argv.
-            const encoded = Buffer.from(WORKING_DIRECTORY_PROBE, 'utf8').toString('base64')
-            const code = `import base64;exec(base64.b64decode('${encoded}'))`
-            const command = `command -v python3 >/dev/null 2>&1 || exit 0; ${shellQuote.quote(['python3', '-c', code, executable, socketPath])}`
-            const result = (await Promise.all([channel.requestExec(command), output]))[1]
-            if (!result) {
-                if (errors.length) { throw new Error(Buffer.concat(errors).toString('utf8').trim()) }
-                return null
+            // shell-quote 1.x drops empty argv entries. Encode the argument tuple
+            // too: the default socket and executable are both intentionally empty.
+            const encoded = Buffer.from(WORKING_DIRECTORY_PROBE).toString('base64')
+            const args = Buffer.from(JSON.stringify([op, key, executable, socketPath])).toString('base64')
+            const code = `import base64,json,sys;sys.argv[1:]=json.loads(base64.b64decode('${args}').decode());exec(base64.b64decode('${encoded}'))`
+            const command = shellQuote.quote(['python3', '-c', code])
+            const result = (await Promise.all([ch.requestExec(command), output]))[1]
+            const frame = result.split(/\r?\n/).filter(line => line.startsWith('TABBY_CWD:')).pop()
+            if (!frame) {
+                const detail = Buffer.concat(errors).toString('utf8').trim().slice(0, 256)
+                throw Object.assign(new Error(detail || 'No directory probe response; check Python 3 and SSH exec access'), { allowReport: true })
             }
-            const parsed = JSON.parse(result)
+            const parsed = JSON.parse(frame.slice('TABBY_CWD:'.length))
             if (typeof parsed.error === 'string') {
-                if (parsed.error === 'Linux /proc is unavailable' || parsed.error === 'SSH connection process is unavailable') { return null }
-                throw new Error(parsed.error)
+                throw Object.assign(new Error(parsed.error), { allowReport: parsed.allowReport === true })
             }
-            return typeof parsed.path === 'string' && parsed.path.startsWith('/') && !parsed.path.includes('\0') ? parsed.path : null
+            return parsed
+        }
+        try {
+            return await Promise.race([read(), new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error('Working directory detection timed out')), 7000)
+            })])
+        } catch (error) {
+            // A transport/exec failure need not hide a valid report from this tab.
+            if (error instanceof Error && !('allowReport' in error)) { Object.assign(error, { allowReport: true }) }
+            throw error
         } finally {
+            finished = true
             clearTimeout(timer)
             subscriptions.forEach(subscription => subscription.unsubscribe())
-            await channel.close().catch(() => null)
+            void channel?.close().catch(() => null)
         }
     }
 
@@ -960,6 +990,49 @@ export class SSHSession {
     }
 
     async openShellChannel (options: { x11: boolean }): Promise<russh.Channel> {
+        // Only channel creation is serialized, never interactive I/O. Capture the
+        // new login session before a second tab on this transport can create a PTY.
+        const previous = this.shellStartQueue
+        let release!: () => void
+        this.shellStartQueue = new Promise<void>(resolve => { release = resolve })
+        await previous
+        try {
+            const before = this.shellsStarted ? await this.listLoginTerminals() : []
+            const ch = await this.startShellChannel(options)
+            this.shellsStarted++
+            const binding = this.bindLoginTerminal(before)
+            this.shellIdentities.set(ch, binding)
+            void binding.then(release, release)
+            return ch
+        } catch (error) {
+            release()
+            throw error
+        }
+    }
+
+    private async listLoginTerminals (): Promise<string[]|null> {
+        try {
+            const { sessions } = await this.runDirectoryProbe('list')
+            if (Array.isArray(sessions) && sessions.every(value => typeof value === 'string')) { return sessions }
+        } catch (error) {
+            this.logger.debug('SSH terminal binding unavailable', error.message)
+        }
+        return null
+    }
+
+    private async bindLoginTerminal (before: string[]|null): Promise<string|null> {
+        if (!before) { return null }
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const after = await this.listLoginTerminals()
+            if (!after) { break }
+            const added = after.filter(key => !before.includes(key))
+            if (added.length) { return added.length === 1 ? added[0] : null }
+            if (attempt < 2) { await new Promise(resolve => setTimeout(resolve, 100)) }
+        }
+        return null
+    }
+
+    private async startShellChannel (options: { x11: boolean }): Promise<russh.Channel> {
         if (!(this.ssh instanceof russh.AuthenticatedSSHClient)) {
             throw new Error('Cannot open shell channel before auth')
         }

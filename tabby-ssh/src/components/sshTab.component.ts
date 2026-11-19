@@ -262,9 +262,20 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
             }
             return null
         }
-        const cwd = await this.sshSession?.queryCurrentWorkingDirectory(this.tmuxSocketPath, this.tmuxExecutablePath)
-        if (cwd) { return cwd }
-        return await this.session?.getWorkingDirectory() ?? null
+        const shell = this.session
+        if (!shell?.open || !shell.shell) { return null }
+        try {
+            const cwd = await this.sshSession?.queryCurrentWorkingDirectory(this.tmuxSocketPath, this.tmuxExecutablePath, shell.shell)
+            if (shell !== this.session || !shell.open) { return null }
+            return cwd ?? await shell.getWorkingDirectory()
+        } catch (error) {
+            if (shell !== this.session || !shell.open) { return null }
+            if (error.allowReport) {
+                const report = await shell.getWorkingDirectory()
+                if (report?.startsWith('/') && !report.includes('\0')) { return report }
+            }
+            throw error
+        }
     }
 
     async copySSHCurrentPath (): Promise<void> {
